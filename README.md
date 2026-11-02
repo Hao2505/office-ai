@@ -15,6 +15,16 @@ cũng xem cùng một văn phòng, cùng một lúc.
   Shopee tiếp thị liên kết của bạn; nhân viên ghé ngắm, **khoe và bàn về món đồ** (dựa trên nhận xét của bạn), người xem bấm
   vào kệ, vào tab 🛍️ hoặc vào **chip link dưới câu thoại** là ra Shopee. Xem mục 5.
 
+## Tài liệu kỹ thuật (cho dev / agent AI)
+
+README này là hướng dẫn thao tác cho chủ dự án. Tài liệu kỹ thuật chi tiết (mã nguồn, kiến trúc, quy ước, việc còn mở) nằm ở thư mục `docs/`:
+
+- [docs/README.md](docs/README.md) — mục lục 14 tài liệu kèm mô tả, lộ trình đọc theo vai trò, bản đồ "sửa file nào → cập nhật tài liệu nào", trạng thái tài liệu cũ (`SPEC.md`, `docs/v2-contract.md`, `docs/v3-news.md`…).
+- [CLAUDE.md](CLAUDE.md) (bản sao cho công cụ AI khác: [AGENTS.md](AGENTS.md)) — hướng dẫn ngắn cho agent AI: lệnh, 5 nguyên tắc, quy ước code và **quy tắc bắt buộc: mọi lần thêm / sửa / xoá chức năng phải cập nhật `docs/` + `CHANGELOG.md`**.
+- [CHANGELOG.md](CHANGELOG.md) — lịch sử thay đổi theo ngày, mới nhất trên cùng.
+
+Những con số trong README này đã biết lệch code (số sản phẩm ở mục 5.1, dung lượng archive ở mục 8, số token ở mục 4, quy trình deploy ở mục 11) được liệt kê ở `docs/13-viec-con-lai-va-y-tuong.md` §1.2; khi lệch, `docs/` là nguồn đúng.
+
 ---
 
 ## 1. Chạy thử trong 3 bước

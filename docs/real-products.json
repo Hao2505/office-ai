@@ -1,0 +1,89 @@
+{
+  "_note": "Sản phẩm THẬT của chủ dự án (đã mua, đang dùng). url = link affiliate Shopee (giữ nguyên cả ?share_channel_code=8). Các mục 'name' đang để '???' là chờ chủ dự án gửi tên; priceHint/note điền sau. Sau khi v2-backend xong sẽ ghép vào data/products.json thay sản phẩm mẫu.",
+  "products": [
+    {
+      "id": "may-hut-bui-giuong-nem",
+      "name": "Máy hút bụi giường nệm",
+      "emoji": "🧹",
+      "category": "cong-nghe",
+      "shelf": "tech",
+      "slot": 0,
+      "tags": ["cong-nghe", "gia-dung", "ve-sinh", "suc-khoe", "ngu-trua", "van-phong"],
+      "pitch": "máy hút bụi giường nệm, hút sạch bụi mịn và mạt nhà trên nệm, gối, sofa",
+      "priceHint": "",
+      "note": "",
+      "url": "https://s.shopee.vn/60Sooviq40?share_channel_code=8",
+      "_info": "https://shopee.vn/product/497364265/43873391495"
+    },
+    {
+      "id": "bang-phan-mat-cheeryep",
+      "name": "Bảng phấn mắt CHEERYEP",
+      "emoji": "🎨",
+      "category": "lam-dep",
+      "shelf": "beauty",
+      "slot": 0,
+      "tags": ["lam-dep", "trang-diem", "makeup", "phu-nu"],
+      "pitch": "bảng phấn mắt CHEERYEP nhiều ô màu, có cả nhũ lẫn lì, dễ tán",
+      "priceHint": "",
+      "note": "",
+      "url": "https://s.shopee.vn/2gCMqq7e1S?share_channel_code=8",
+      "_info": "https://shopee.vn/product/1563283710/43812655967"
+    },
+    {
+      "id": "san-pham-3",
+      "name": "???",
+      "emoji": "📦",
+      "category": "cong-nghe",
+      "shelf": "tech",
+      "slot": 1,
+      "tags": [],
+      "pitch": "",
+      "priceHint": "",
+      "note": "",
+      "url": "https://s.shopee.vn/AAINmjYHHl?share_channel_code=8",
+      "_info": "https://shopee.vn/product/297412293/21025037057"
+    },
+    {
+      "id": "san-pham-5",
+      "name": "???",
+      "emoji": "📦",
+      "category": "cong-nghe",
+      "shelf": "tech",
+      "slot": 2,
+      "tags": [],
+      "pitch": "",
+      "priceHint": "",
+      "note": "",
+      "url": "https://s.shopee.vn/5AthpfaOtA?share_channel_code=8",
+      "_info": "https://shopee.vn/product/1191389091/24764601036"
+    },
+    {
+      "id": "san-pham-6",
+      "name": "???",
+      "emoji": "📦",
+      "category": "cong-nghe",
+      "shelf": "tech",
+      "slot": 3,
+      "tags": [],
+      "pitch": "",
+      "priceHint": "",
+      "note": "",
+      "url": "https://s.shopee.vn/7AemDNje8A?share_channel_code=8",
+      "_info": "https://shopee.vn/product/94273103/28317765039"
+    },
+    {
+      "id": "san-pham-6b",
+      "name": "???",
+      "emoji": "📦",
+      "category": "cong-nghe",
+      "shelf": "tech",
+      "slot": 4,
+      "tags": [],
+      "pitch": "",
+      "priceHint": "",
+      "note": "",
+      "url": "https://s.shopee.vn/1W0PSzGMdq?share_channel_code=8",
+      "_info": "https://shopee.vn/product/529384519/57655687547"
+    }
+  ]
+}

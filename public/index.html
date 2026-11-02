@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f6f1ea">
+  <title>Văn Phòng Ảo — VibeCorp</title>
+  <meta name="description" content="Văn phòng công ty công nghệ ảo với 10 nhân viên AI: làm việc, tám chuyện, trốn việc, bị sếp bắt quả tang, bị HR gọi lên phòng… tất cả diễn ra trực tiếp.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='88'%3E%F0%9F%8F%A2%3C/text%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap">
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="js/main.js"></script>
+</head>
+<body>
+  <div id="app">
+    <main class="main" id="main">
+      <section class="stage" id="stage" aria-label="Văn phòng trực tiếp">
+        <canvas id="office" aria-label="Bản đồ văn phòng — bấm vào nhân viên để xem hồ sơ"></canvas>
+
+        <!-- HUD mỏng nổi trên canvas (thay thanh trên cùng cũ) -->
+        <div class="hud" id="hud">
+          <div class="hud-left">
+            <div class="live-badge" aria-label="Đang phát trực tiếp"><span class="live-dot" aria-hidden="true"></span>TRỰC TIẾP</div>
+            <span class="ai-dot" id="ai-dot" role="img" aria-label="Thoại: đang kiểm tra" title="Thoại: đang kiểm tra"></span>
+            <div class="hud-clock" id="hud-clock" title="Giờ trong văn phòng">
+              <span class="hud-time" id="clock-time">--:--</span>
+              <span class="hud-day" id="clock-day">Đang kết nối…</span>
+              <span class="hud-speed" id="clock-speed" hidden></span>
+              <span class="hud-bar" aria-hidden="true"><span id="clock-fill"></span></span>
+            </div>
+          </div>
+          <div class="hud-right" id="chips" role="group" aria-label="Tình hình công ty">
+            <button type="button" class="chip chip-incident" id="chip-incident" aria-label="Sự cố" hidden></button>
+            <button type="button" class="chip chip-project" id="chip-project" aria-label="Dự án">🚀</button>
+            <button type="button" class="chip chip-revenue" id="chip-revenue" aria-label="Doanh thu tháng">💰</button>
+            <button type="button" class="chip chip-viewers" id="chip-viewers" aria-label="Người xem">👀</button>
+            <!-- chỉ hiện cho admin (mở trang kèm mã dev): nguồn AI, lượt gọi, lỗi -->
+            <button type="button" class="chip chip-ai" id="chip-ai" aria-label="AI" hidden>🤖</button>
+          </div>
+        </div>
+        <div class="popover" id="popover" role="dialog" aria-label="Chi tiết" hidden></div>
+
+        <div class="toasts" id="toasts" aria-live="polite"></div>
+        <div class="conn-banner" id="conn-banner" role="alert" hidden><span class="spinner" aria-hidden="true"></span>Mất kết nối, đang kết nối lại…</div>
+        <div class="zoom" role="group" aria-label="Thu phóng bản đồ">
+          <button type="button" id="zoom-in" aria-label="Phóng to" title="Phóng to">＋</button>
+          <button type="button" id="zoom-out" aria-label="Thu nhỏ" title="Thu nhỏ">－</button>
+          <button type="button" id="zoom-fit" aria-label="Xem toàn cảnh" title="Xem toàn cảnh">⤢</button>
+        </div>
+        <div class="devbar" id="devbar" hidden></div>
+        <div class="hover-tip" id="hover-tip" hidden></div>
+        <div class="prod-tip" id="prod-tip" role="tooltip" hidden></div>
+        <div class="stage-hint" id="stage-hint">👆 Bấm vào nhân viên để xem hồ sơ · cuộn / chụm để phóng to</div>
+
+        <!-- dải chạy chữ khi thu gọn bảng tin -->
+        <div class="ticker" id="ticker" hidden>
+          <div class="tk-body" id="tk-body" aria-live="polite"></div>
+          <button type="button" class="tk-expand" id="sb-expand" aria-label="Mở lại bảng tin">💬 Mở bảng tin</button>
+        </div>
+
+        <div class="loading" id="loading">
+          <div class="loading-card">
+            <div class="loading-icon" aria-hidden="true">🏢</div>
+            <div class="loading-title">Đang mở cửa văn phòng…</div>
+            <div class="loading-sub" id="loading-sub">Đang kết nối tới văn phòng…</div>
+            <div class="loading-dots" aria-hidden="true"><span></span><span></span><span></span></div>
+          </div>
+        </div>
+      </section>
+
+      <aside class="sidebar" id="sidebar" aria-label="Bảng thông tin">
+        <div class="sb-handle" id="sb-handle" role="separator" aria-orientation="vertical" aria-label="Kéo để đổi độ rộng bảng (phím mũi tên)" aria-valuemin="260" aria-valuemax="520" aria-valuenow="320" tabindex="0" title="Kéo để đổi độ rộng · bấm đúp để về mặc định"></div>
+        <header class="sb-head">
+          <span class="sb-logo" aria-hidden="true">🏢</span>
+          <div class="sb-brand">
+            <h1 class="sb-name" id="company-name">VibeCorp</h1>
+            <span class="sb-tag" id="company-tag">Văn phòng ảo — nhân viên AI sống real-time</span>
+          </div>
+          <button type="button" class="sb-collapse" id="sb-collapse" aria-label="Thu gọn bảng tin" title="Thu gọn bảng tin">⟩</button>
+        </header>
+        <nav class="tabs" role="tablist" aria-label="Bảng thông tin">
+          <button type="button" role="tab" data-tab="live" class="active" title="Trực tiếp"><i class="tab-ic" aria-hidden="true">💬</i><span>Trực tiếp</span></button>
+          <button type="button" role="tab" data-tab="staff" title="Nhân sự"><i class="tab-ic" aria-hidden="true">👥</i><span>Nhân sự</span></button>
+          <button type="button" role="tab" data-tab="products" title="Sản phẩm"><i class="tab-ic" aria-hidden="true">🛍️</i><span>Sản phẩm</span></button>
+          <button type="button" role="tab" data-tab="recap" title="Bản tin"><i class="tab-ic" aria-hidden="true">📰</i><span>Bản tin</span><i class="tab-dot"></i></button>
+          <button type="button" role="tab" data-tab="rumors" title="Tin đồn"><i class="tab-ic" aria-hidden="true">🗣️</i><span>Tin đồn</span><i class="tab-dot"></i></button>
+        </nav>
+        <section class="panel active" data-panel="live" role="tabpanel">
+          <div class="filters" id="filters" role="group" aria-label="Lọc theo kênh"></div>
+          <div class="feed-wrap">
+            <div class="feed" id="feed" data-filter="all" aria-live="polite"></div>
+            <button type="button" class="new-msgs" id="new-msgs" hidden>▼ Tin mới</button>
+          </div>
+        </section>
+        <section class="panel" data-panel="staff" role="tabpanel"><div class="staff scroll" id="staff"></div></section>
+        <section class="panel" data-panel="products" role="tabpanel"><div class="products scroll" id="products"></div></section>
+        <section class="panel" data-panel="recap" role="tabpanel">
+          <div class="recaps scroll" id="recaps">
+            <!-- v3: tin thật nhân vật đang bàn (hello.news + cảnh news_chat) -->
+            <div class="news-strip" id="news-strip" aria-label="Tin đang bàn" hidden></div>
+            <!-- v3: lịch sử công ty (GET /api/history) — mở ra mới tải -->
+            <details class="history" id="history">
+              <summary class="hist-sum">
+                <span class="hist-ic" aria-hidden="true">🗂️</span>
+                <span class="hist-title">Lịch sử</span>
+                <span class="hist-hint">xem lại từng ngày đã qua</span>
+                <span class="hist-caret" aria-hidden="true">▼</span>
+              </summary>
+              <div class="hist-body">
+                <div class="hist-controls">
+                  <label class="hist-label" for="hist-date">Ngày</label>
+                  <select id="hist-date" class="hist-select" aria-label="Chọn ngày muốn xem lại" hidden></select>
+                  <button type="button" class="hist-btn" id="hist-refresh" title="Tải lại danh sách ngày" aria-label="Tải lại danh sách ngày">↻</button>
+                  <button type="button" class="hist-btn" id="hist-toggle" hidden>Mở hết</button>
+                </div>
+                <div class="hist-status" id="hist-status" role="status" hidden></div>
+                <div class="hist-feed" id="hist-feed"></div>
+                <div class="hist-foot" id="hist-foot" hidden>
+                  <span class="hist-count" id="hist-count"></span>
+                  <button type="button" class="hist-more" id="hist-more">Tải thêm</button>
+                </div>
+              </div>
+            </details>
+            <div class="recap-list" id="recap-list"></div>
+          </div>
+        </section>
+        <section class="panel" data-panel="rumors" role="tabpanel"><div class="rumors scroll" id="rumors"></div></section>
+      </aside>
+    </main>
+
+    <div class="drawer-backdrop" id="drawer-backdrop" hidden></div>
+    <aside class="drawer" id="drawer" aria-hidden="true" aria-label="Hồ sơ nhân viên">
+      <div class="drawer-head">
+        <span class="drawer-title">🪪 Hồ sơ nhân viên</span>
+        <button type="button" class="drawer-close" aria-label="Đóng">✕</button>
+      </div>
+      <div class="drawer-body"></div>
+    </aside>
+  </div>
+</body>
+</html>

@@ -1,0 +1,18 @@
+node_modules
+.env
+# trạng thái văn phòng (PERSIST=true) + bản hỏng/bản tạm khi ghi
+data/state.json
+data/state.json.*
+*.tmp-*
+
+# thông tin VPS
+deploy/vps.env
+deploy/.env.production
+
+# lưu trữ dài hạn (HISTORY_ENABLED=true)
+data/history/
+
+# rác hệ điều hành / log / cấu hình cục bộ
+.DS_Store
+*.log
+.claude/settings.local.json

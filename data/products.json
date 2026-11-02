@@ -1,0 +1,369 @@
+{
+  "_note": "Danh sách sản phẩm tiếp thị liên kết — hiện trên 2 kệ ở PHÒNG TRƯNG BÀY (kệ Làm đẹp / kệ Công nghệ), trong tab 🛍️ Sản phẩm và trong lời thoại của nhân vật. Đây là dữ liệu MẪU: thay bằng đồ thật bạn đang dùng + link affiliate Shopee của bạn. Sửa xong khởi động lại server. Mục nào sai định dạng sẽ bị bỏ qua (có cảnh báo trên terminal), không làm sập web. | 2 sản phẩm THẬT (link affiliate) đang ở slot 0 mỗi kệ; các sản phẩm còn lại là MẪU (link tìm kiếm Shopee), thay dần bằng hàng thật từ docs/real-products.json.",
+  "_huong_dan": {
+    "id": "Mã duy nhất, chữ thường không dấu, nối bằng '-' (vd 'tai-nghe-chong-on'). Đừng đổi id của món đang có: thống kê click (/api/stats) và 'món đồ trên bàn' của nhân vật (src/content/roster.ts) dùng id này.",
+    "name": "Tên hiển thị trên chip, tooltip và tab 🛍️ (nhân vật sẽ gọi kiểu đời thường, không đọc nguyên tên).",
+    "emoji": "1 emoji vẽ trên kệ khi chưa có ảnh.",
+    "category": "'lam-dep' (kệ LÀM ĐẸP, bên trái) hoặc 'cong-nghe' (kệ CÔNG NGHỆ, bên phải). Thiếu thì suy từ tags.",
+    "shelf": "Tuỳ chọn, suy từ category: 'beauty' | 'tech'. Có ghi mà lệch category thì server sửa theo category.",
+    "slot": "Vị trí trên kệ, đếm từ 0, không trùng trong cùng kệ. Slot 0–4 được VẼ trên kệ ở văn phòng; slot từ 5 trở lên chỉ hiện trong tab 🛍️. Thiếu thì server tự xếp theo thứ tự trong file.",
+    "note": "1 câu nhận xét THẬT của bạn (xưng 'mình'), vd 'Mình xài 3 tháng rồi, pin trâu, đeo cả ngày không đau tai'. Nhân vật dùng câu này làm chất liệu khi khoe món đồ ở phòng trưng bày và tab 🛍️ hiển thị nguyên văn. Không ghi giá, không ghi link.",
+    "pitch": "Câu khen ngắn, viết thường, để nhân vật lồng vào các cảnh khác (pantry, ăn trưa, nhóm chat). Không giá, không link.",
+    "priceHint": "Chỉ để hiển thị trên chip/tooltip (vd '~350k'). AI không đọc giá.",
+    "url": "Link tiếp thị liên kết Shopee của bạn (https://s.shopee.vn/...). Chỉ server biết; trình duyệt luôn đi qua /go/<id>?src=showroom|sidebar|scene|desk để đếm click rồi mới chuyển hướng.",
+    "image": "Tuỳ chọn: URL ảnh https. Không có thì vẽ emoji.",
+    "tags": "Từ khoá để chọn sản phẩm hợp ngữ cảnh trong các cảnh khác (lam-dep, my-pham, thoi-trang, massage, suc-khoe, dev, ban-phim, chuot, tai-nghe, man-hinh, sac, dien-thoai, gaming, karaoke, livestream, du-lich, qua-tang, van-phong...).",
+    "them_san_pham": "Copy một mục bất kỳ, đổi id / name / emoji / category / slot / note / url (và pitch, priceHint, tags nếu muốn), lưu file, khởi động lại server."
+  },
+  "products": [
+    {
+      "id": "bang-phan-mat-cheeryep",
+      "name": "Bảng phấn mắt CHEERYEP",
+      "emoji": "🎨",
+      "category": "lam-dep",
+      "shelf": "beauty",
+      "slot": 0,
+      "tags": [
+        "lam-dep",
+        "trang-diem",
+        "makeup",
+        "phu-nu"
+      ],
+      "pitch": "bảng phấn mắt CHEERYEP nhiều ô màu, có cả nhũ lẫn lì, dễ tán",
+      "priceHint": "",
+      "note": "Mình đang xài bảng này, màu lên chuẩn, dễ tán, đi làm hay đi chơi đều hợp.",
+      "url": "https://s.shopee.vn/2gCMqq7e1S?share_channel_code=8"
+    },
+    {
+      "id": "son-kem-li",
+      "name": "Son kem lì mềm môi",
+      "emoji": "💄",
+      "category": "lam-dep",
+      "shelf": "beauty",
+      "slot": 1,
+      "note": "Mình đánh màu đất này đi làm hợp lắm, ăn trưa xong vẫn còn màu mà môi không bị khô.",
+      "tags": [
+        "lam-dep",
+        "my-pham",
+        "thoi-trang",
+        "qua-tang",
+        "van-phong"
+      ],
+      "pitch": "đánh một lần, ăn trưa uống trà sữa xong vẫn còn màu",
+      "priceHint": "~180k",
+      "url": "https://shopee.vn/search?keyword=Son%20kem%20l%C3%AC%20m%E1%BB%81m%20m%C3%B4i"
+    },
+    {
+      "id": "kem-chong-nang",
+      "name": "Kem chống nắng nâng tông",
+      "emoji": "🧴",
+      "category": "lam-dep",
+      "shelf": "beauty",
+      "slot": 2,
+      "note": "Mình xài thay kem nền luôn, mỏng nhẹ, chạy xe ngoài nắng tới công ty mặt vẫn ráo không bết.",
+      "tags": [
+        "lam-dep",
+        "my-pham",
+        "suc-khoe",
+        "du-lich",
+        "van-phong"
+      ],
+      "pitch": "bôi mỏng nhẹ, chạy xe ngoài nắng cả ngày không bết",
+      "priceHint": "~220k",
+      "url": "https://shopee.vn/search?keyword=Kem%20ch%E1%BB%91ng%20n%E1%BA%AFng%20n%C3%A2ng%20t%C3%B4ng"
+    },
+    {
+      "id": "serum-cap-am",
+      "name": "Serum cấp ẩm HA",
+      "emoji": "💧",
+      "category": "lam-dep",
+      "shelf": "beauty",
+      "slot": 3,
+      "note": "Ngồi máy lạnh cả ngày da mình khô lắm, bôi hai giọt buổi sáng là căng tới chiều.",
+      "tags": [
+        "lam-dep",
+        "my-pham",
+        "suc-khoe",
+        "may-lanh",
+        "van-phong"
+      ],
+      "pitch": "ngồi máy lạnh cả ngày da vẫn căng, không bị khô",
+      "priceHint": "~250k",
+      "url": "https://shopee.vn/search?keyword=Serum%20c%E1%BA%A5p%20%E1%BA%A9m%20HA"
+    },
+    {
+      "id": "may-say-toc-mini",
+      "name": "Máy sấy tóc mini gấp gọn",
+      "emoji": "💇",
+      "category": "lam-dep",
+      "shelf": "beauty",
+      "slot": 4,
+      "note": "Mình mang đi công tác đi chơi suốt, nhỏ bằng bàn tay mà sấy nhanh, tóc không bị khét.",
+      "tags": [
+        "lam-dep",
+        "du-lich",
+        "cong-nghe",
+        "qua-tang"
+      ],
+      "pitch": "nhỏ bằng bàn tay mà sấy nhanh, đi công tác tiện cực",
+      "priceHint": "~350k",
+      "url": "https://shopee.vn/search?keyword=M%C3%A1y%20s%E1%BA%A5y%20t%C3%B3c%20mini%20g%E1%BA%A5p%20g%E1%BB%8Dn"
+    },
+    {
+      "id": "den-ring-light",
+      "name": "Đèn ring light kẹp điện thoại",
+      "emoji": "🤳",
+      "category": "lam-dep",
+      "shelf": "beauty",
+      "slot": 5,
+      "note": "Mình kẹp vào bàn để họp online với quay clip, da sáng hẳn mà khỏi phải chỉnh app.",
+      "tags": [
+        "livestream",
+        "lam-dep",
+        "tiktok",
+        "content",
+        "marketing",
+        "van-phong"
+      ],
+      "pitch": "quay clip da sáng mịn, livestream nhìn chuyên nghiệp hẳn",
+      "priceHint": "~250k",
+      "url": "https://shopee.vn/search?keyword=%C4%90%C3%A8n%20ring%20light%20livestream%20k%E1%BA%B9p%20%C4%91i%E1%BB%87n%20tho%E1%BA%A1i"
+    },
+    {
+      "id": "ao-cardigan",
+      "name": "Áo cardigan mỏng mặc phòng máy lạnh",
+      "emoji": "🧥",
+      "category": "lam-dep",
+      "shelf": "beauty",
+      "slot": 6,
+      "note": "Văn phòng mình lạnh như tủ đông, khoác cái này vô là ấm mà mặc đi làm vẫn xinh.",
+      "tags": [
+        "thoi-trang",
+        "may-lanh",
+        "van-phong",
+        "lam-dep"
+      ],
+      "pitch": "phòng lạnh 18 độ khoác vô là ấm, mặc đi làm vẫn xinh",
+      "priceHint": "~220k",
+      "url": "https://shopee.vn/search?keyword=%C3%81o%20cardigan%20m%E1%BB%8Fng%20m%E1%BA%B7c%20ph%C3%B2ng%20m%C3%A1y%20l%E1%BA%A1nh"
+    },
+    {
+      "id": "may-massage-co-vai-gay",
+      "name": "Máy massage cổ vai gáy",
+      "emoji": "💆",
+      "category": "lam-dep",
+      "shelf": "beauty",
+      "slot": 7,
+      "note": "Ngồi máy tính tới chiều là cổ mình cứng ngắc, đeo 15 phút là êm, xài gần một năm chưa hư.",
+      "tags": [
+        "massage",
+        "thu-gian",
+        "lung",
+        "suc-khoe",
+        "qua-tang",
+        "lam-dep",
+        "van-phong"
+      ],
+      "pitch": "đeo lên cổ 15 phút là vai hết cứng, đỡ hơn đi spa",
+      "priceHint": "~450k",
+      "url": "https://shopee.vn/search?keyword=M%C3%A1y%20massage%20c%E1%BB%95%20vai%20g%C3%A1y"
+    },
+    {
+      "id": "may-hut-bui-giuong-nem",
+      "name": "Máy hút bụi giường nệm",
+      "emoji": "🧹",
+      "category": "cong-nghe",
+      "shelf": "tech",
+      "slot": 0,
+      "tags": [
+        "cong-nghe",
+        "gia-dung",
+        "ve-sinh",
+        "suc-khoe",
+        "ngu-trua",
+        "van-phong"
+      ],
+      "pitch": "máy hút bụi giường nệm, hút bụi mịn và mạt nhà trên nệm, gối, sofa",
+      "priceHint": "",
+      "note": "Mình mua về hút nệm với sofa ở nhà, đang xài thấy sạch và tiện, không còn hắt xì buổi sáng.",
+      "url": "https://s.shopee.vn/60Sooviq40?share_channel_code=8"
+    },
+    {
+      "id": "ban-phim-co",
+      "name": "Bàn phím cơ không dây",
+      "emoji": "⌨️",
+      "category": "cong-nghe",
+      "shelf": "tech",
+      "slot": 1,
+      "note": "Mình gõ con này hơn một năm, switch êm không làm phiền đồng nghiệp, sạc một lần xài cả tháng.",
+      "tags": [
+        "ban-phim",
+        "dev",
+        "van-phong",
+        "gaming",
+        "cong-nghe"
+      ],
+      "pitch": "gõ code nghe lách cách sướng tai, sạc một lần xài cả tháng",
+      "priceHint": "~900k",
+      "url": "https://shopee.vn/search?keyword=B%C3%A0n%20ph%C3%ADm%20c%C6%A1%20kh%C3%B4ng%20d%C3%A2y"
+    },
+    {
+      "id": "tai-nghe-chong-on",
+      "name": "Tai nghe chống ồn chụp tai",
+      "emoji": "🎧",
+      "category": "cong-nghe",
+      "shelf": "tech",
+      "slot": 2,
+      "note": "Mình xài ba tháng rồi, pin trâu, đeo cả ngày không đau tai, bật chống ồn là văn phòng im bặt.",
+      "tags": [
+        "tai-nghe",
+        "dev",
+        "tap-trung",
+        "giai-tri",
+        "cong-nghe",
+        "van-phong"
+      ],
+      "pitch": "đeo vô là cả văn phòng im bặt, tập trung code nguyên buổi",
+      "priceHint": "~1,2tr",
+      "url": "https://shopee.vn/search?keyword=Tai%20nghe%20ch%E1%BB%91ng%20%E1%BB%93n%20ch%E1%BB%A5p%20tai"
+    },
+    {
+      "id": "chuot-khong-day",
+      "name": "Chuột không dây công thái học",
+      "emoji": "🖱️",
+      "category": "cong-nghe",
+      "shelf": "tech",
+      "slot": 3,
+      "note": "Đổi qua con này là mình hết đau cổ tay, cầm êm, một cục pin xài cả tháng.",
+      "tags": [
+        "chuot",
+        "dev",
+        "van-phong",
+        "suc-khoe",
+        "cong-nghe",
+        "design"
+      ],
+      "pitch": "cầm êm tay, kéo chuột cả ngày không mỏi cổ tay",
+      "priceHint": "~350k",
+      "url": "https://shopee.vn/search?keyword=Chu%E1%BB%99t%20kh%C3%B4ng%20d%C3%A2y%20c%C3%B4ng%20th%C3%A1i%20h%E1%BB%8Dc"
+    },
+    {
+      "id": "sac-du-phong",
+      "name": "Sạc dự phòng 20.000mAh sạc nhanh",
+      "emoji": "🔋",
+      "category": "cong-nghe",
+      "shelf": "tech",
+      "slot": 4,
+      "note": "Đi làm đi chơi gì mình cũng thủ theo, sạc điện thoại được bốn lần, 30 phút lên hơn nửa pin.",
+      "tags": [
+        "sac",
+        "dien-thoai",
+        "cong-nghe",
+        "du-lich",
+        "van-phong",
+        "nang-luong"
+      ],
+      "pitch": "sạc điện thoại được bốn lần, khỏi đi mượn sạc nữa",
+      "priceHint": "~400k",
+      "url": "https://shopee.vn/search?keyword=S%E1%BA%A1c%20d%E1%BB%B1%20ph%C3%B2ng%2020.000mAh%20s%E1%BA%A1c%20nhanh"
+    },
+    {
+      "id": "man-hinh-27-inch",
+      "name": "Màn hình 27 inch 2K chuẩn màu",
+      "emoji": "🖥️",
+      "category": "cong-nghe",
+      "shelf": "tech",
+      "slot": 5,
+      "note": "Mình chia đôi màn vừa làm vừa đọc tài liệu, màu chuẩn, nhìn cả ngày không mỏi mắt.",
+      "tags": [
+        "man-hinh",
+        "dev",
+        "design",
+        "van-phong",
+        "cong-nghe",
+        "mat"
+      ],
+      "pitch": "chia đôi màn hình vừa code vừa đọc tài liệu, màu chuẩn cho dân thiết kế",
+      "priceHint": "~4,5tr",
+      "url": "https://shopee.vn/search?keyword=M%C3%A0n%20h%C3%ACnh%2027%20inch%202K%20chu%E1%BA%A9n%20m%C3%A0u"
+    },
+    {
+      "id": "dong-ho-thong-minh",
+      "name": "Đồng hồ thông minh đo sức khoẻ",
+      "emoji": "⌚",
+      "category": "cong-nghe",
+      "shelf": "tech",
+      "slot": 6,
+      "note": "Mình đeo đi tập với đi làm, pin mười ngày mới sạc, đang họp có tin nhắn thì liếc tay là biết.",
+      "tags": [
+        "cong-nghe",
+        "suc-khoe",
+        "the-thao",
+        "golf",
+        "sep",
+        "qua-tang",
+        "dien-thoai"
+      ],
+      "pitch": "đếm bước, đo nhịp tim, pin mười ngày, nhận tin nhắn khỏi móc điện thoại",
+      "priceHint": "~1,5tr",
+      "url": "https://shopee.vn/search?keyword=%C4%90%E1%BB%93ng%20h%E1%BB%93%20th%C3%B4ng%20minh%20%C4%91o%20s%E1%BB%A9c%20kho%E1%BA%BB"
+    },
+    {
+      "id": "gia-do-laptop",
+      "name": "Giá đỡ laptop nhôm gấp gọn",
+      "emoji": "💻",
+      "category": "cong-nghe",
+      "shelf": "tech",
+      "slot": 7,
+      "note": "Kê laptop lên ngang mắt là hết cúi gằm, mình gấp lại bỏ balo mang đi làm mỗi ngày.",
+      "tags": [
+        "dev",
+        "lung",
+        "van-phong",
+        "laptop",
+        "suc-khoe",
+        "cong-nghe"
+      ],
+      "pitch": "kê laptop cao ngang mắt, hết cúi gằm đau cổ",
+      "priceHint": "~220k",
+      "url": "https://shopee.vn/search?keyword=Gi%C3%A1%20%C4%91%E1%BB%A1%20laptop%20nh%C3%B4m%20g%E1%BA%A5p%20g%E1%BB%8Dn"
+    },
+    {
+      "id": "quat-tan-nhiet-dien-thoai",
+      "name": "Quạt tản nhiệt điện thoại sò lạnh",
+      "emoji": "❄️",
+      "category": "cong-nghe",
+      "shelf": "tech",
+      "slot": 8,
+      "note": "Mình gắn sau điện thoại chơi game với livestream cả tiếng máy vẫn mát, không giật.",
+      "tags": [
+        "gaming",
+        "dien-thoai",
+        "game",
+        "cong-nghe"
+      ],
+      "pitch": "chơi game cả tiếng máy vẫn mát, không bị giật lag",
+      "priceHint": "~180k",
+      "url": "https://shopee.vn/search?keyword=Qu%E1%BA%A1t%20t%E1%BA%A3n%20nhi%E1%BB%87t%20%C4%91i%E1%BB%87n%20tho%E1%BA%A1i%20s%C3%B2%20l%E1%BA%A1nh"
+    },
+    {
+      "id": "micro-karaoke",
+      "name": "Micro karaoke bluetooth kèm loa",
+      "emoji": "🎤",
+      "category": "cong-nghe",
+      "shelf": "tech",
+      "slot": 9,
+      "note": "Tiệc công ty hay sinh nhật mình mang ra là vui hẳn, kết nối điện thoại hát liền, pin được cả buổi.",
+      "tags": [
+        "karaoke",
+        "giai-tri",
+        "tiec",
+        "qua-tang",
+        "cong-nghe"
+      ],
+      "pitch": "kết nối điện thoại là hát liền, tiệc văn phòng vui hẳn",
+      "priceHint": "~350k",
+      "url": "https://shopee.vn/search?keyword=Micro%20karaoke%20bluetooth%20k%C3%A8m%20loa"
+    }
+  ]
+}

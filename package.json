@@ -1,0 +1,30 @@
+{
+  "name": "agent-office",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Văn phòng ảo: 10 nhân viên AI tự làm việc, tám chuyện, drama real-time",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "typecheck": "tsc --noEmit",
+    "smoke": "tsx scripts/smoke.ts",
+    "smoke:story": "tsx scripts/smoke-story.ts",
+    "test:llm": "tsx scripts/test-llm.ts",
+    "test": "npm run typecheck && npm run smoke && npm run smoke:story && npm run test:news && npm run test:llm && npm run test:router",
+    "test:router": "tsx scripts/test-router.ts",
+    "test:news": "tsx scripts/test-news.ts",
+    "eyeball:hr": "tsx scripts/eyeball-hr.ts"
+  },
+  "dependencies": {
+    "dotenv": "^18.0.9",
+    "openai": "^6.49.0",
+    "ws": "^8.22.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/ws": "^8.18.2",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}

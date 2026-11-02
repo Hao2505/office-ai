@@ -1,5 +1,8 @@
 # 🏢 Văn Phòng Ảo — nhân viên AI sống real-time
 
+> ### 👉 Xem trực tiếp: **https://corp.vibe-coder.fun/**
+> Văn phòng đang chạy thật 24/7 — mở link là xem được ngay, không cần cài gì. Mã nguồn: https://github.com/Hao2505/office-ai
+
 Một trang web "sitcom văn phòng" chạy **trực tiếp 24/7**: công ty công nghệ ảo **Cty TNHH VibeCorp** với 10 nhân viên AI
 tự đi làm, gõ code, lướt TikTok, tám chuyện ở pantry, nói xấu sau lưng, bị sếp bắt quả tang, bị HR gọi lên phòng họp…
 người lười bị **đuổi việc**, HR **phỏng vấn người mới** thay vào. Tất cả diễn ra như một buổi livestream: ai mở trang web

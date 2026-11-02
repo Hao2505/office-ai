@@ -348,7 +348,7 @@ Bối cảnh ban đầu nói "dự án chưa `git init`" đã **cũ**: thư mụ
 
 ### 7.2 Quy ước commit
 
-- Thông điệp tiếng Việt, dạng `<vùng>: <mô tả ở thì hiện tại>` — khớp hai commit đã có. Vùng dùng một trong: `ai`, `sim`, `drama`, `hr`, `news`, `canvas`, `ui`, `server`, `config`, `content`, `data`, `deploy`, `test`, `docs`, `README`, `SPEC`. Ví dụ: `ai: giữ nhịp quota ngày (AI_<TÊN>_PACE), test-router mục 13`, `docs: thêm 14-quy-uoc-dong-gop`.
+- Thông điệp **bằng tiếng Anh** (yêu cầu chủ dự án 2026-11-02), dạng `<area>: <description, present tense>` — hai commit đầu tiên còn tiếng Việt, giữ nguyên lịch sử, không rewrite. Vùng dùng một trong: `ai`, `sim`, `drama`, `hr`, `news`, `canvas`, `ui`, `server`, `config`, `content`, `data`, `deploy`, `test`, `docs`, `README`, `SPEC`. Ví dụ: `ai: giữ nhịp quota ngày (AI_<TÊN>_PACE), test-router mục 13`, `docs: thêm 14-quy-uoc-dong-gop`.
 - Thân commit (khi không hiển nhiên): **vì sao** (không phải cái gì), nguyên tắc nào bị ảnh hưởng (§1.4), tài liệu đã cập nhật, test đã chạy. Commit do agent AI tạo ghi rõ điều đó trong thân (dòng `Co-Authored-By:` theo cấu hình của công cụ) và không được gộp thay đổi ngoài phạm vi được giao.
 - Một thay đổi logic = một commit; docs đi cùng commit code (R1). Không commit "WIP" lên `main`.
 - Trước mỗi commit: `git status --short` không có file bí mật/rác; `git check-ignore -v .env deploy/vps.env deploy/.env.production data/state.json` phải in ra 4 dòng (đang bị bỏ qua); `git diff --stat` khớp phạm vi việc.

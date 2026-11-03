@@ -50,10 +50,10 @@ if [ $SETUP = 1 ]; then
   $SSH "cat > /etc/nginx/conf.d/vpa-limit.conf" < deploy/nginx.limit.conf
   sed "s/__DOMAIN__/$DOMAIN/g; s/__PORT__/$APP_PORT/g" deploy/nginx.site.conf | \
     $SSH "cat > /etc/nginx/sites-available/$DOMAIN && ln -sf /etc/nginx/sites-available/$DOMAIN /etc/nginx/sites-enabled/$DOMAIN && nginx -t && systemctl reload nginx"
-  # Không dùng --redirect: Cloudflare ở chế độ Flexible nối tới origin bằng HTTP, redirect ở origin sẽ tạo vòng lặp.
-  # Origin phục vụ cả 80 lẫn 443; ép HTTPS thì bật "Always Use HTTPS" trên Cloudflare.
+  # Cloudflare chạy SSL "Full (strict)" (từ 2026-11-03): request https vào origin cổng 443 và Cloudflare KIỂM chứng chỉ →
+  # site BẮT BUỘC có khối 443 với chứng chỉ hợp lệ (certbot thêm), thiếu / hết hạn = lỗi 526. Khối 80 → https của certbot vô hại.
   echo "▶ SSL Let's Encrypt (certbot --nginx)"
-  $SSH "certbot --nginx -d $DOMAIN --non-interactive --agree-tos --register-unsafely-without-email || echo '⚠️ certbot lỗi — site vẫn chạy qua HTTP/Cloudflare; chạy lại sau: certbot --nginx -d $DOMAIN'"
+  $SSH "certbot --nginx -d $DOMAIN --non-interactive --agree-tos --register-unsafely-without-email || echo '⚠️ certbot lỗi — chưa có chứng chỉ: qua Cloudflare (SSL Full strict) tên miền này sẽ báo lỗi 526. Nếu lỗi xác minh: tạm tắt proxy (đám mây xám) cho tên miền rồi chạy lại: certbot --nginx -d $DOMAIN'"
   echo "▶ pm2 tự chạy khi reboot"
   $SSH "env PATH=\$PATH:/usr/bin pm2 startup systemd -u $APP_USER --hp /home/$APP_USER >/dev/null 2>&1 || true"
 fi

@@ -66,7 +66,7 @@ Nguyên tắc: tài liệu `01`–`14` đã tả đúng code; các file dưới 
 | `docs/v3-news.md:77` | Liệt kê `comeback`, `headhunt_rumor` | **Chưa làm** (grep `src/` chỉ thấy chữ "headhunt" trong một điều kiện văn bản ở `src/ai/offline.ts:4259`) → chuyển sang §3 của sổ này | P3 |
 | `docs/v3-news.md` (kho tin) | "lưu ~40 tin mỗi nhóm + persist" | Bộ nhớ giữ 40/nhóm (`perCategory: 40` trong `NewsStore.defaults()`, `src/news/store.ts:119`; chú thích đầu file `:2`) nhưng serialize chỉ 12/nhóm (`PERSIST_PER_CATEGORY`, `store.ts:18`, `:353`) → sau khởi động lại kho còn ≤ 12/nhóm tới lần tải đầu | P3 |
 | `docs/ui-polish-todo.md` §1–§6 | Chưa đánh ✅ | Đã hiện thực trong v2 (HUD, nhân vật to, feed gom theo cảnh, sidebar co giãn, tên công ty, showroom + WC ẩn) — chỉ §7–§9 có ✅ | P3 |
-| `docs/ui-polish-todo.md` §8 (ghi chú gốc) vs `deploy/deploy.sh:53-54` | "SSL mode Full" vs "Cloudflare ở chế độ Flexible" | Mâu thuẫn; ảnh hưởng cờ `Secure` của cookie admin (`server.ts:103-104` dựa vào `X-Forwarded-Proto`) — xem §Câu hỏi còn mở | P2 |
+| ✅ 2026-11-03 — ~~`docs/ui-polish-todo.md` §8 vs `deploy/deploy.sh:53-54`~~ | Đã rõ: Cloudflare chạy SSL **Full** (ghi chú ui-polish-todo đúng), chủ dự án chuyển **Full (strict)** cùng ngày | Đã sửa chú thích `deploy.sh` và docs/10 §5.1; cookie admin có `Secure` | — |
 | `docs/v2-contract.md:90` | `setCharacterScale(n)` "(default = the new bigger size)" | `DEFAULT_CHAR_SCALE = 1` (`office.js:27`); không UI nào gọi `setCharacterScale` (`office.js:1189-1191`) | P3 |
 | `docs/v2-spec-notes.md` | Stub "đã merge vào SPEC" | Có thể xoá hoặc giữ làm con trỏ; nếu xoá phải sửa chỗ trỏ tới nó | P3 |
 | `.env.example` | Không liệt kê `OPENAI_RPM/OPENAI_RPD/OPENAI_TPD` (kiểu cũ); `AI_PROVIDERS=gemini,groq` (`:5`) trong khi README §3.4 minh hoạ ba nguồn | `config.ts` đọc được `OPENAI_*` (đường kiểu cũ); Cloudflare đang ở dạng comment (`.env.example:147-156`) — thống nhất một ví dụ | P3 |
@@ -232,7 +232,7 @@ Mục này để người mới **không sửa nhầm**. Mỗi dòng ghi rõ "c�
 
 | Hành vi | Loại | Tham chiếu | Ghi chú |
 |---|---|---|---|
-| Cookie admin chỉ có cờ `Secure` khi `X-Forwarded-Proto: https` | giới hạn | `server.ts:103-104`; nginx đặt `X-Forwarded-Proto $scheme` | Với Cloudflare **Flexible** (origin nhận HTTP, `deploy.sh:53-54`) cookie không `Secure`; với Full thì có. Xem §Câu hỏi còn mở. |
+| Cookie admin chỉ có cờ `Secure` khi `X-Forwarded-Proto: https` | `cố ý` | `server.ts:103-104`; nginx đặt `X-Forwarded-Proto $scheme` | Cloudflare chạy SSL Full (strict) (2026-11-03) → origin nhận HTTPS 443 → cookie có `Secure`. |
 | `/api/dev/*` cũng chịu `limit_req` 2 r/s | `cố ý` | `nginx.site.conf:29-31` khớp `location /api/` | Đăng nhập admin hiếm nên chấp nhận. |
 
 ---
@@ -299,7 +299,7 @@ README §15 có 9 gạch đầu dòng (`README.md:574-584`): 8 nằm ở bảng 
 
 ## Câu hỏi còn mở / cần kiểm tra
 
-1. **Cloudflare SSL mode thật là Flexible hay Full?** `deploy/deploy.sh:53-54` nói Flexible (không redirect ở origin); `docs/ui-polish-todo.md` §8 (ghi chú gốc) nói Full. Ảnh hưởng: cờ `Secure` của cookie `vpa_dev` (`server.ts:103-104`) và việc có cần `--redirect` cho certbot. Kiểm trên dashboard Cloudflare rồi sửa một trong hai chỗ.
+1. ~~Cloudflare SSL mode thật là Flexible hay Full?~~ — **đã rõ 2026-11-03: Full**, chủ dự án chuyển **Full (strict)** cùng ngày. Chú thích `deploy.sh` và docs/10 §5.1 đã sửa; cookie `vpa_dev` có `Secure`. Lưu ý: site nào trên VPS thiếu chứng chỉ hoặc chứng chỉ hết hạn → lỗi 526.
 2. **nginx `limit_req` có gây 429 oan sau Cloudflare không?** Chưa có `real_ip` trong `deploy/`. Kiểm `/var/log/nginx/*access.log` trên VPS khi mở nhiều tab Lịch sử; nếu `$remote_addr` toàn IP Cloudflare thì cần sửa (§1.3, P1).
 3. **Archive có dòng "ngày 1" giả sau mỗi restart không?** (§2.1) — kiểm `grep "ngày 1 —" data/history/<hôm nay>.jsonl` ngay sau một lần `pm2 restart vibecorp`. Lưu ý: restart vào Thứ Bảy/Chủ Nhật (realtime) sẽ thấy dòng 🏖️ "cuối tuần, văn phòng đóng cửa" thay cho 🌅 vì `planDay` trả về sớm khi `closedToday` (`world.ts:2533-2536`) — vẫn là dòng giả, đừng kết luận "không có".
 4. **Nguyên nhân thật của "2 cảnh news_chat liền nhau"** — giả thuyết (a)/(b)/(c) ở §1.1 #2; cần tái hiện bằng smoke-story hoặc theo dõi `director.stats()` (`newsScenes`, `newsHints`) sau khi bấm nút.
@@ -311,7 +311,7 @@ README §15 có 9 gạch đầu dòng (`README.md:574-584`): 8 nằm ở bảng 
 10. **Thời gian chạy test thật**: `smoke` ~6 s, `smoke:story` ~30 s (README §12) chưa đo lại sau v3; `test-news` "76 khẳng định" (SPEC §10.2) chưa đếm lại; `test-llm`/`test-router` có vài chỗ chờ thật 1,5–4 s.
 11. **`tsx watch` có theo dõi `public/` không?** Nếu không, dev sửa `public/` cũng phải restart để `ASSET_VERSION` đổi (hoặc trình duyệt giữ bản cũ `immutable`). Kiểm bằng cách sửa một file CSS khi `npm run dev` đang chạy.
 12. **`data/state.json` vắng trên máy dev** — `PERSIST` tắt hay `STATE_FILE` khác? (không đọc `.env`; chủ dự án xác nhận.)
-13. **Certbot có tự gia hạn không** (timer `certbot.timer` trên VPS) khi đăng ký không email? Chứng chỉ hết hạn 2027-01-30.
+13. ~~Certbot có tự gia hạn không~~ — **có** (kiểm 2026-11-03): `snap.certbot.renew.timer` chạy 2 lần/ngày; chứng chỉ corp hạn 2027-01-30.
 14. **Script đo độ mượt của chủ dự án** (dùng `window.__vpa`/`canvas.__view`) nằm ở đâu? Nên commit vào `scripts/qa/` để người sau dùng.
 15. **`node:sqlite` trên VPS**: Node trên VPS là bản nào (`deploy.sh:23` chỉ in `node -v`)? Quyết định hướng DB ở §3.
 16. **Xếp lại cảnh HR sau restart — phản biện đã bác (2026-11-02)**: một lượt rà soát cho rằng `firing`/`hr_warning` đang dở **không** được xếp lại vì điều kiện loại trừ ở `director.ts:4117`; đọc lại thấy `:4113-4115` xếp riêng hai loại này ngay trước đó, `:4117` chỉ tránh xếp hai lần → giữ khẳng định "xếp lại đủ" ở §2.1. Chưa thấy test khẳng định riêng hành vi này (smoke chỉ kiểm serialize/restore chung — cần kiểm tra); nếu thêm, kiểm cả ba nhánh.

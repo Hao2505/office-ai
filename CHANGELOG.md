@@ -11,6 +11,12 @@ Mọi thay đổi chức năng của dự án ghi ở đây, **mới nhất trê
 
 ## [Unreleased]
 
+### Vận hành
+- [deploy] Chú thích `deploy.sh` và câu báo lỗi certbot sửa theo thực tế: Cloudflare không phải Flexible mà là SSL **Full**, chủ dự án chuyển **Full (strict)** cùng ngày (Cloudflare kiểm chứng chỉ origin; sau khi chuyển corp + cinema vẫn trả 200). Mọi site trên VPS bắt buộc có khối 443 với chứng chỉ hợp lệ, thiếu / hết hạn = lỗi 526; certbot lỗi thì cảnh báo đúng điều đó kèm cách xử lý — `deploy/deploy.sh` · docs/10 §3.5, §5.1.
+
+### Tài liệu
+- [docs] Đóng câu hỏi "Cloudflare Flexible hay Full" (đã rõ: Full, nay là Full (strict); cookie admin có `Secure`) và "certbot có tự gia hạn không" (có: timer chạy 2 lần/ngày, chứng chỉ hạn 2027-01-30) — docs/01, 10, 12, 13.
+
 ## [2026-11-03]
 
 ### Thêm

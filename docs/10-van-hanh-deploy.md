@@ -49,8 +49,8 @@ Người xem (trình duyệt)                                  Admin (trình duy
 | Tiến trình | pm2 tên **`vibecorp`**, lệnh `npm start` → `tsx src/server.ts` (không có bước build) | `deploy.sh:45`, `package.json:9` |
 | Cổng app | **3200** (`APP_PORT` mặc định trong script; `PORT` trong `.env.production` phải bằng đúng số này) | `deploy.sh:18`, `nginx.site.conf:14,32,43` |
 | Reverse proxy | nginx site riêng `/etc/nginx/sites-available/<DOMAIN>` + vùng `limit_req` ở `/etc/nginx/conf.d/vpa-limit.conf` | `deploy.sh:50-52` |
-| TLS tại origin | Let's Encrypt qua `certbot --nginx` (không `--redirect`); ghi chú lịch sử: chứng chỉ hết hạn 2027-01-30 | `deploy.sh:55-56`, `ui-polish-todo.md:96` |
-| Phía trước | Cloudflare proxy. Chế độ SSL: chú thích `deploy.sh:53` nói **Flexible**, `ui-polish-todo.md:101` nói **Full** → **(cần kiểm tra trên dashboard Cloudflare)** | xem §5.1 |
+| TLS tại origin | Let's Encrypt qua `certbot --nginx`: khối `listen 443 ssl` + khối cổng 80 chuyển sang https; chứng chỉ corp hạn 2027-01-30, tự gia hạn bằng `snap.certbot.renew.timer` 2 lần/ngày (kiểm 2026-11-03) | `deploy.sh:55-56`, `ui-polish-todo.md:96` |
+| Phía trước | Cloudflare proxy, SSL **Full (strict)** (Full xác nhận 2026-11-03, chủ dự án chuyển strict cùng ngày): request https vào origin cổng 443 và Cloudflare kiểm chứng chỉ → mọi site trên VPS phải có khối 443 với chứng chỉ hợp lệ | xem §5.1 |
 | Deploy lần đầu | `bash deploy/deploy.sh --setup` (2026-11-01 20:15) | `ui-polish-todo.md:96` |
 | Cập nhật | `bash deploy/deploy.sh` | `deploy.sh:4-5` |
 | Mã nguồn | repo git cục bộ trên máy dev (commit `9d1d455` khởi tạo, `0e9e925` thêm link site); **VPS không có `.git`** (rsync loại trừ) — rollback = deploy lại bản cũ từ máy dev (§7.2) | `git log`, `deploy.sh:31` |
@@ -156,7 +156,7 @@ Chạy từ bất kỳ thư mục nào: script tự `cd "$(dirname "$0")/.."` v�
 | 6 | `:38-40` | | kiểm tra `deploy/.env.production` rồi `sshpass -e scp -P "$VPS_PORT"` thành `/opt/vibecorp/.env` | thiếu → in gợi ý (`PORT=$APP_PORT, PERSIST=true, DEV_PANEL=false hoặc DEV_PANEL=true + DEV_TOKEN=<bí mật>`) và `exit 1` — **code đã rsync xong nhưng tiến trình cũ vẫn chạy code cũ trong RAM** |
 | 7 | `:42-46` | | `chown -R deploy:deploy`, `chmod 600 .env`, rồi dưới user `deploy`: `cd /opt/vibecorp && npm install --include=dev --no-audit --no-fund --loglevel=error && (pm2 describe vibecorp && pm2 restart vibecorp --update-env \|\| pm2 start npm --name vibecorp -- start) && pm2 save && sleep 4 && pm2 ls \| grep vibecorp` | `npm install` lỗi hoặc `pm2 ls` không có `vibecorp` → dừng |
 | 8 | `:48-52` | ✓ | ghi `deploy/nginx.limit.conf` → `/etc/nginx/conf.d/vpa-limit.conf`; `sed` thay `__DOMAIN__`/`__PORT__` trong `nginx.site.conf` → `/etc/nginx/sites-available/$DOMAIN`; `ln -sf` vào `sites-enabled`; `nginx -t`; `systemctl reload nginx` | `nginx -t` lỗi → dừng (nginx cũ vẫn chạy, không reload) |
-| 9 | `:55-56` | ✓ | `certbot --nginx -d $DOMAIN --non-interactive --agree-tos --register-unsafely-without-email` | **không dừng**: in `⚠️ certbot lỗi — site vẫn chạy qua HTTP/Cloudflare; chạy lại sau…` |
+| 9 | `:55-56` | ✓ | `certbot --nginx -d $DOMAIN --non-interactive --agree-tos --register-unsafely-without-email` | **không dừng**: in `⚠️ certbot lỗi — chưa có chứng chỉ: qua Cloudflare (SSL Full strict) tên miền này sẽ báo lỗi 526…` |
 | 10 | `:57-58` | ✓ | `pm2 startup systemd -u deploy --hp /home/deploy` (để pm2 tự chạy lại sau reboot) | `\|\| true`: lỗi bị **nuốt im lặng** → sau `--setup` nên tự kiểm tra (§6) |
 | 11 | `:61-63` | | trên VPS: `sleep 2; curl -s -m 5 http://127.0.0.1:$APP_PORT/api/health` (`:62`); từ máy dev: `curl -s -m 10 https://$DOMAIN/api/health` (`:63`) | **không làm script fail** — chỉ in `app chưa trả lời` / `(https chưa sẵn sàng — xem bước SSL)`; phải tự đọc output |
 | 12 | `:64` | | in lệnh xem log: `ssh -p $VPS_PORT $VPS_USER@$VPS_HOST 'su - deploy -c "pm2 logs vibecorp --lines 50"'` | |
@@ -190,7 +190,7 @@ Lệnh (`:31-36`; dòng `:32` = `node_modules`/`.git`/`state.json*`, `:33` = `da
 
 1. `nginx.limit.conf` → `/etc/nginx/conf.d/vpa-limit.conf`: chỉ thị `limit_req_zone` **phải nằm trong `http{}`**, mà file site chỉ có `server{}`, nên tách riêng (`nginx.limit.conf:1-2`). Tên file có tiền tố `vpa-` để không trùng app khác.
 2. `nginx.site.conf` → `/etc/nginx/sites-available/$DOMAIN` sau khi `sed s/__DOMAIN__/…/; s/__PORT__/…/`; symlink `sites-enabled/$DOMAIN`; `nginx -t` rồi `systemctl reload nginx`.
-3. `certbot --nginx -d $DOMAIN --non-interactive --agree-tos --register-unsafely-without-email`: certbot sửa chính file site để thêm `listen 443 ssl` và đường dẫn chứng chỉ (dòng 1 của `nginx.site.conf` ghi rõ "certbot sẽ tự thêm phần SSL (443) vào file này"). **Cố ý không `--redirect`** (`deploy.sh:53-54`): nếu Cloudflare ở chế độ Flexible thì Cloudflare nối origin bằng HTTP; origin mà 301 sang HTTPS sẽ tạo vòng lặp. Ép HTTPS cho người xem bằng "Always Use HTTPS" **trên Cloudflare**. `--register-unsafely-without-email` ⇒ Let's Encrypt **không gửi mail nhắc hết hạn**; trông vào timer tự gia hạn của certbot (§6).
+3. `certbot --nginx -d $DOMAIN --non-interactive --agree-tos --register-unsafely-without-email`: certbot sửa chính file site: chuyển cấu hình sang khối `listen 443 ssl` kèm đường dẫn chứng chỉ (dòng 1 của `nginx.site.conf` ghi rõ "certbot sẽ tự thêm phần SSL (443) vào file này") và thêm một khối cổng 80 trả 301 sang https (thấy trên VPS 2026-11-03). **Khối 443 với chứng chỉ hợp lệ là bắt buộc**: Cloudflare chạy SSL Full (strict) nên request https vào origin cổng 443 và bị kiểm chứng chỉ (§5.1); khối 80 → https vô hại. (Chú thích cũ "cố ý không `--redirect` vì Cloudflare Flexible" là sai.) `--register-unsafely-without-email` ⇒ Let's Encrypt **không gửi mail nhắc hết hạn**; trông vào timer tự gia hạn của certbot (§6).
 4. `pm2 startup systemd -u deploy --hp /home/deploy` tạo unit systemd chạy `pm2 resurrect` lúc boot cho user `deploy`; `|| true` nên lỗi không hiện.
 
 ### 3.6 Kiểm tra cuối và mã thoát
@@ -203,7 +203,7 @@ Script kết thúc với `✅ Xong.` **kể cả khi** health thất bại (bư�
 |---|---|---|
 | `PORT` trong `.env.production` ≠ `APP_PORT` | nginx 502 | kiểm tra trước khi deploy (§11); đổi cổng thì đổi cả hai + `--setup` |
 | Sửa `.env` tay trên VPS | mất ở lần deploy sau | luôn sửa `deploy/.env.production` |
-| Chạy lại `--setup` | ghi đè `/etc/nginx/sites-available/$DOMAIN` (mất phần 443 certbot đã thêm) rồi `certbot --nginx` thêm lại; certbot có thể lỗi (giới hạn cấp lại của Let's Encrypt) → origin tạm mất HTTPS; với Cloudflare Flexible site vẫn chạy, với Full thì lỗi | chỉ `--setup` khi dựng VPS mới hoặc cố ý đổi nginx; sau đó kiểm `curl -I https://<DOMAIN>/api/health` |
+| Chạy lại `--setup` | ghi đè `/etc/nginx/sites-available/$DOMAIN` (mất phần 443 certbot đã thêm) rồi `certbot --nginx` thêm lại; certbot có thể lỗi (giới hạn cấp lại của Let's Encrypt) → origin tạm mất khối 443; Cloudflare chạy Full (strict) nên lúc đó tên miền báo lỗi 526 | chỉ `--setup` khi dựng VPS mới hoặc cố ý đổi nginx; sau đó kiểm `curl -I https://<DOMAIN>/api/health` |
 | Bước 6 fail sau khi rsync | code mới trên đĩa, tiến trình cũ trong RAM → trạng thái "nửa deploy" | tạo `.env.production` rồi chạy lại script (idempotent) |
 | `npm install` trên 1 vCPU | có thể chậm vài phút khi `package-lock.json` đổi; trong lúc đó app cũ vẫn chạy (chỉ dừng lúc `pm2 restart`) | deploy giờ ít người xem |
 | Health `|| echo` | script xanh dù app chết | đọc output, hoặc chạy tay `curl` (§6) |
@@ -255,10 +255,11 @@ Không có `client_max_body_size` riêng: body duy nhất app nhận là `POST /
 ### 5.1 Proxy và chế độ SSL
 
 - Tên miền được proxy qua Cloudflare (đám mây cam) — `ui-polish-todo.md:96,101`. Mọi kết nối người xem → Cloudflare là HTTPS/WSS do Cloudflare cấp; Cloudflare → origin (nginx) theo **SSL mode**:
-  - **Flexible**: Cloudflare nối origin bằng **HTTP cổng 80**. Hệ quả: `$scheme` = `http` → `X-Forwarded-Proto: http` → cookie admin **không có cờ `Secure`** (`server.ts:103-104`); không được `--redirect` ở origin (vòng lặp — `deploy.sh:53`).
-  - **Full**: Cloudflare nối origin bằng **HTTPS cổng 443** (chấp nhận chứng chỉ Let's Encrypt). `X-Forwarded-Proto: https` → cookie `Secure`.
-  - Hai nguồn trong repo mâu thuẫn (`deploy.sh:53` Flexible vs `ui-polish-todo.md:101` Full). **Cần kiểm tra trên dashboard Cloudflare** rồi sửa chú thích sai. Cách kiểm nhanh không cần dashboard: tạm xem access log của `location /api/` trên VPS (chỉ `/ws` và `?dev=` bị tắt log) — cổng/scheme mà Cloudflare gọi vào sẽ lộ qua `$scheme`/`$server_port` nếu format log có; hoặc đơn giản tắt `listen 80` thử nghiệm (không khuyến nghị trên site đang chạy).
-- Ép HTTPS cho người xem: bật **Always Use HTTPS** ở Cloudflare (không làm ở origin).
+  - **Đang dùng: Full (strict)** — chủ dự án chuyển trên dashboard 2026-11-03 (trước đó là Full; xác nhận nhờ phiên dựng VibeCinema thấy request https vào thẳng cổng 443 của VPS). Cloudflare dùng cùng giao thức với người xem: request https → origin cổng **443**, và ở chế độ strict Cloudflare **kiểm chứng chỉ origin** (đúng tên miền, còn hạn, CA tin được — Let's Encrypt đạt). Sau khi chuyển: `corp` và `cinema` vẫn trả 200. Hệ quả: nginx `$scheme` = `https` → `X-Forwarded-Proto: https` → cookie admin **có** cờ `Secure` (`server.ts:103-104`); chứng chỉ thiếu / sai tên / hết hạn → người xem thấy **lỗi 526** của Cloudflare.
+  - **Bẫy khi thêm site mới trên VPS này:** thiếu khối 443 hoặc chưa có chứng chỉ cho tên miền đó → lỗi 526 (ở chế độ Full thường thì còn tệ hơn: rơi vào khối 443 của `tokivietnam.com`, hiện site của app khác). Cấp chứng chỉ (certbot) trước khi chia sẻ link. Nếu certbot báo lỗi xác minh do Cloudflare chuyển request sang https: tạm tắt proxy (đám mây xám) cho tên miền đó rồi chạy lại, hoặc dùng Cloudflare Origin Certificate.
+  - Lịch sử: chú thích cũ của `deploy.sh` ghi "Flexible, không `--redirect`" — sai, đã sửa 2026-11-03.
+  - Full (strict) đổi lại một rủi ro: chứng chỉ hết hạn là site sập 526 ngay → phải giữ certbot tự gia hạn chạy (hiện timer chạy 2 lần/ngày, §6).
+- Ép HTTPS cho người xem: "Always Use HTTPS" trên Cloudflare; khối cổng 80 → https ở origin cũng vô hại (request http lọt tới cổng 80 được chuyển sang https, request https đi thẳng 443).
 - Cloudflare che IP thật của người xem khỏi nginx (§4.3) và cũng che IP origin khỏi người xem.
 
 ### 5.2 Cache 4 giờ cho `.js/.css` → phiên bản tài nguyên tĩnh `/v/<ASSET_VERSION>/…`
@@ -413,7 +414,7 @@ Các lần sau: mở corp.vibe-coder.fun bình thường → localStorage còn t
 | `#dev=` rỗng không xoá cookie | chỉ xoá localStorage (`net.js:60-62`), không gọi logout → socket vẫn dev nhờ cookie. Chỉ 🚪 mới thoát hẳn | [02 §8](./02-kien-truc-va-giao-thuc.md) |
 | Link `?dev=<sai>` ghi đè token đúng | `devToken()` ghi mọi giá trị đọc được vào localStorage; query sai → `devAllowed` không xét cookie → mất quyền tới khi mở lại link đúng | `server.ts:72-74`, `net.js:56-60` |
 | `GET /api/stats?dev=<token>` để token trong access log nginx | `location /api/` không có `access_log off`; chỉ `/ws` và `location /` có | §6 (dùng cookie thay thế) |
-| Cloudflare Flexible → cookie không `Secure` | `X-Forwarded-Proto: http` (§5.1) | `server.ts:103-104` |
+| ~~Cloudflare Flexible → cookie không `Secure`~~ | không xảy ra: Cloudflare chạy Full → `X-Forwarded-Proto: https`, cookie có `Secure` (§5.1, kiểm 2026-11-03) | `server.ts:103-104` |
 | `DEV_TOKEN` trống trên production | ai cũng là admin (hành vi v1/v2) — log khởi động nhắc | `server.ts:567` |
 
 ---
@@ -496,7 +497,7 @@ Nhịp một ngày VN bình thường với pace bật: sáng Gemini "giữ nh�
 | Log `[world] ⚠️ Không khôi phục được trạng thái … File cũ được giữ lại tại: …state.json.bad-…` | `state.json` hỏng / sai `STATE_VERSION` (sau rollback) | `ls /opt/vibecorp/data/` | văn phòng đã tự bắt đầu lại; giữ file `.bad-*` để xem, xoá khi không cần |
 | Văn phòng **"đứng hình" ban đêm** / không sang ngày | không — thiết kế, **chỉ ở `TIME_MODE=compressed`** (`world.ts:1139`): từ 18:30 không ai ở văn phòng thì nhảy ngày (`T_NIGHT_SKIP`, `world.ts:61,1141`); failsafe 23:00 (`T_FAILSAFE :63`, cảnh báo `:2411`). Ở `realtime` không có nhảy đêm/failsafe: ngày game bám giờ thật VN và sang ngày khi lịch VN đổi ngày (`endDay('rollover')`, `world.ts:1120-1128`); `T_FORCE_OUT` 21:00 (`:1143`) áp cho cả hai chế độ | log `[world] Ngày N: quá 23:00 vẫn còn người — buộc kết thúc ngày.` | nếu cảnh báo failsafe lặp mỗi ngày → có người kẹt trong cảnh — xem [04](./04-dao-dien-cau-chuyen-nhan-su.md) |
 | **Đĩa** đầy dần | `data/history/` (~0,85 MB/ngày thật đo 2026-11-01: `2026-11-01.jsonl` 854 897 B) | `du -sh /opt/vibecorp/data/history`; `ls` có `.gz` sau 7 ngày? `index.json` có? | bình thường gzip sau `HISTORY_GZIP_AFTER_DAYS=7`, xoá sau 180 ngày (`rotate()` lúc khởi động + sang ngày, `archive.ts:118,166-167,246`); nếu không thấy `.gz` → xem log `🗄️ Lưu trữ:` / `stats.errors` qua `/api/history` |
-| **Chứng chỉ hết hạn** (chỉ ảnh hưởng khi Cloudflare Full) | timer certbot không chạy; không có mail nhắc | `certbot certificates`; `systemctl list-timers \| grep certbot` | `certbot renew`; nếu Flexible thì người xem không thấy gì vì Cloudflare cấp cert cho họ |
+| **Chứng chỉ hết hạn** | timer certbot không chạy (hiện chạy 2 lần/ngày — kiểm 2026-11-03); không có mail nhắc. Cloudflare đang ở **Full (strict)** nên hết hạn = người xem thấy **lỗi 526** ngay | `certbot certificates`; `systemctl list-timers \| grep certbot` | `certbot renew`; nếu xác minh lỗi do Cloudflare thì tạm tắt proxy (đám mây xám) rồi gia hạn |
 | **Không có tin thời sự** (không cảnh 🗞️, nút dev news báo "Chưa có tin") | VPS không ra được feed; `NEWS_ENABLED=false`; feed đổi URL | `curl -s https://…/api/news \| jq '.lastError, .counts, .lastOkAt'`; log cảnh báo nguồn (1 lần/giờ/feed) | kiểm tra DNS/egress VPS; sửa `NEWS_FEEDS`; xem [06 §13](./06-tin-tuc-thoi-su.md) |
 | Sau **reboot VPS** app không lên | `pm2 startup` ở `--setup` đã lỗi im lặng (`\|\| true`) | `systemctl status pm2-deploy` (tên cần kiểm tra); `su - deploy -c 'pm2 ls'` | `su - deploy -c 'pm2 resurrect'`; chạy lại tay `pm2 startup systemd -u deploy --hp /home/deploy` theo hướng dẫn nó in ra |
 | Log `[ws] Bỏ qua lệnh dev từ client không có quyền (tổng N lần)` (≤ 1 dòng/phút, `DEV_IGNORED_WARN_MS` `server.ts:54`) | (a) socket không dev gửi lệnh (`server.ts:472`); (b) **`POST /api/dev/login` sai mã cũng đếm** (`server.ts:117`) — rất thường gặp sau khi đổi `DEV_TOKEN`: trình duyệt cũ còn `localStorage['vpa.dev']` = mã cũ tự POST mỗi lần mở trang (`net.js:32-37`), không phải ai dò | so mốc thời gian log với lần đổi token; trên trình duyệt admin cũ: Network → `POST /api/dev/login` → 403? | vô hại; mở lại `#dev=<mới>` trên các trình duyệt cũ để hết log; chỉ nghi dò khi N tăng nhanh mà không đổi token |
@@ -550,7 +551,7 @@ Không có test tự động cho vùng này (deploy, nginx, Cloudflare). Kiểm 
 
 ## Câu hỏi còn mở / cần kiểm tra
 
-1. **Chế độ SSL Cloudflare thật là gì** — `deploy.sh:53` nói Flexible, `ui-polish-todo.md:101` nói Full. Xác nhận trên dashboard rồi sửa chú thích sai; nếu Flexible, cân nhắc chuyển Full (cookie `Secure`, mã hoá tới origin) và khi đó vẫn **không** dùng `--redirect`.
+1. ~~Chế độ SSL Cloudflare thật là gì~~ — **đã rõ 2026-11-03: Full**, chủ dự án chuyển **Full (strict)** cùng ngày; chú thích `deploy.sh` đã sửa (§5.1).
 2. **`limit_req` khoá theo IP Cloudflare edge** (§4.3): chưa có `set_real_ip_from`/`real_ip_header CF-Connecting-IP`. Cần đo trên VPS (`grep 'limiting requests' /var/log/nginx/error.log`) và quyết định: real IP, nới `rate`, hay chỉ giới hạn `/api/history`.
 3. **`GET /api/stats?dev=<token>` để token trong access log nginx** vì `location /api/` không có `access_log off` (chỉ `/ws` và `$arg_dev` ở `location /`). Nên thêm `if ($arg_dev) { access_log off; }` vào `location /api/` hoặc sửa README §3.6 sang cách dùng cookie (§6).
 4. **`kill_timeout` của pm2 trên VPS** so với dự phòng `exit(0)` sau 1,5 s của `shutdown()`: cần xem `pm2 describe vibecorp` để chắc pm2 không SIGKILL trước khi `world.save()` + `archive.stop()` xong (nhất là khi hàng đợi archive dài).
@@ -565,7 +566,7 @@ Không có test tự động cho vùng này (deploy, nginx, Cloudflare). Kiểm 
 13. **Tiêu thụ băng thông/CPU thật của VPS theo số người xem** chưa đo (`agents` + `status` mỗi 2 s cho mọi socket — xem [02 Câu hỏi 1](./02-kien-truc-va-giao-thuc.md)); 1 vCPU dùng chung với app khác.
 14. **Cổng 3000 "đã bận"** là của app nào trên VPS — ghi chú để người sau không vô tình đổi `APP_PORT` về 3000.
 15. **`README.md` §11 "Đưa lên mạng"** chỉ là gợi ý chung và `.env.example:102` ghi `PORT=3000`: nên trỏ README §11 sang tài liệu này và ghi rõ production dùng 3200 qua `deploy/.env.production`.
-16. **Chứng chỉ Let's Encrypt** không có mail nhắc; xác nhận `certbot.timer` hoạt động và hạn thật (ghi chú cũ: 2027-01-30).
+16. ~~Chứng chỉ Let's Encrypt có tự gia hạn không~~ — **có** (kiểm 2026-11-03): `snap.certbot.renew.timer` chạy 2 lần/ngày, cấu hình gia hạn dùng plugin nginx, chứng chỉ corp hạn 2027-01-30. Vẫn không có mail nhắc.
 17. **Nhãn "Lượt gọi hôm nay" (`hud.js:319`) hiển thị tổng cộng dồn `ai.calls`** (§9.1–§9.2), không phải số trong ngày. Chọn một: đổi nhãn thành "Tổng lượt gọi" (và "Token vào/ra" tương tự), hoặc thêm bộ đếm theo ngày được `rollDay()` reset và đưa vào `UsageStats`/`ProviderStats` (`types.ts:359-377`) — khi đó phải cập nhật snapshot `brain` trong `state.json`, `scripts/test-router.ts` và [05](./05-lop-ai.md).
 18. **Tên model Groq tuỳ chọn lệch giữa hai nguồn**: `.env.example:32` gợi ý `qwen/qwen3-32b`, còn `README.md:101,189` và §9.5 ghi `qwen/qwen3.8-27b` (theo chủ dự án). Cần kiểm tra tên model thật trên Groq rồi sửa một bên; tài liệu này theo README. — **đã thống nhất 2026-11-02**: `.env.example` được sửa, giờ ghi `qwen/qwen3.8-27b`.
 19. ~~Chưa có `docs/README.md`~~ — mục lục [README.md](./README.md) đã được tạo 2026-11-02; đoạn mở đầu đã cập nhật.

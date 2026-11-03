@@ -249,6 +249,19 @@ const built = buildProviders(process.env);
 const primary: ProviderConfig | undefined = built.providers[0];
 const legacyModel = str(process.env.OPENAI_MODEL) || 'gpt-4o-mini';
 
+/** SITE_URL → "https://host[:port][/path]" không có "/" cuối; sai định dạng → '' */
+function siteUrlOf(v: string | undefined): string {
+  const raw = str(v);
+  if (!raw) return '';
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return '';
+    return `${u.origin}${u.pathname.replace(/\/+$/, '')}`;
+  } catch {
+    return '';
+  }
+}
+
 export const CONFIG = {
   port: num(process.env.PORT, 3000),
 
@@ -292,6 +305,12 @@ export const CONFIG = {
   persist: bool(process.env.PERSIST, true),
   stateFile: process.env.STATE_FILE?.trim() || 'data/state.json',
   companyName: process.env.COMPANY_NAME?.trim() || 'Cty TNHH VibeCorp',
+  /**
+   * Địa chỉ gốc công khai của site (vd https://corp.vibe-coder.fun) — dùng cho thẻ Open Graph / canonical trong index.html
+   * (ảnh xem trước khi dán link lên Facebook / Zalo phải là URL tuyệt đối). Trống = suy ra từ request (Host + https sau
+   * Cloudflare / nginx). Sai định dạng (không phải http/https) → coi như trống.
+   */
+  siteUrl: siteUrlOf(process.env.SITE_URL),
 
   // ---- v3: thời sự (tin thật từ RSS báo — docs/v3-news.md) ----
   newsEnabled: bool(process.env.NEWS_ENABLED, true),

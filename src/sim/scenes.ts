@@ -208,10 +208,21 @@ export const SCENE_DEFS: Record<SceneType, SceneDef> = {
     effects: ['memory', 'relationship'], product: false, label: 'bị gọi lên phòng sếp', emote: '😟',
     topics: [],
   },
+  // ---- v5: tình huống công ty (src/content/situations.ts)
+  crisis_meeting: {
+    title: 'Họp xử lý tình huống', icon: '🧯', channel: 'office', priority: 'high', minLines: 6, maxLines: 10,
+    effects: ['verdict', 'mood', 'relationship', 'memory'], product: false, label: 'đang họp xử lý tình huống', emote: '🧯',
+    topics: [],
+  },
+  pep_talk: {
+    title: 'Sếp truyền lửa', icon: '📣', channel: 'office', priority: 'normal', minLines: 5, maxLines: 9,
+    effects: ['verdict', 'mood', 'relationship', 'memory'], product: false, label: 'đang nghe truyền lửa', emote: '📣',
+    topics: [],
+  },
 };
 
-/** Cảnh v3 do AI quyết (kết quả nằm trong verdict / hrDecisions) */
-export const VERDICT_SCENES: SceneType[] = ['interview', 'resign_talk', 'raise_request'];
+/** Cảnh do AI quyết (kết quả nằm trong verdict / hrDecisions) — v5 thêm họp xử lý tình huống và truyền lửa */
+export const VERDICT_SCENES: SceneType[] = ['interview', 'resign_talk', 'raise_request', 'crisis_meeting', 'pep_talk'];
 
 export const SCENE_TYPES = Object.keys(SCENE_DEFS) as SceneType[];
 export const isSceneType = (v: unknown): v is SceneType =>
@@ -377,7 +388,7 @@ export const SPOT_LABELS: Record<string, string> = {
   pantry_table: 'Bàn ăn pantry', lounge: 'Góc chill', toilet: 'Khu WC', pingpong: 'Bàn bóng bàn ở sảnh',
   printer: 'Máy in ở sảnh', window: 'Góc cửa sổ', meeting: 'Phòng họp', boss_visit: 'Phòng Giám đốc',
   server: 'Phòng server', kpi_board: 'Trước bảng KPI', entrance: 'Cửa ra vào',
-  showroom_beauty: 'Kệ làm đẹp (phòng trưng bày)', showroom_tech: 'Kệ công nghệ (phòng trưng bày)',
+  showroom_beauty: 'Kệ làm đẹp & thời trang (phòng trưng bày)', showroom_tech: 'Kệ công nghệ & nhà cửa (phòng trưng bày)',
 };
 
 export type Area = 'pantry' | 'lounge' | 'window' | 'kpi_board' | 'printer';
@@ -819,7 +830,30 @@ export function sitPantry(k: SitKit, area: Area, people: AgentState[]): Situatio
  * tone (v3, mạch truyện): 'tense' = hai người đang bất đồng (cãi căng, không ai chịu ai);
  * 'warm' = đang thân nhau bất ngờ (nói chuyện vui, lộ sở thích chung); 'makeup' = làm hoà sau cãi vã.
  */
-export type VisitTone = 'tense' | 'warm' | 'makeup';
+/** v4: unbox = vừa nhận hàng khui hộp tại bàn; gift = mang quà tới tặng */
+/**
+ * Giọng cảnh ghé bàn do mạch truyện đặt: tense (cãi nhau) · warm (tình bạn mới chớm) · makeup (làm hoà) · unbox (khui hàng) ·
+ * gift (tặng quà) · support (v5: hỏi han / nói chuyện riêng khi người kia gặp chuyện, hoặc thương lượng hướng xử lý).
+ */
+export type VisitTone = 'tense' | 'warm' | 'makeup' | 'unbox' | 'gift' | 'support';
+
+/**
+ * v5: mục tiêu cảnh "nói chuyện riêng" theo lý do ghé bàn (act): hỏi han (công ty chưa có hướng xử lý → không hứa gì) ·
+ * thương lượng (chống đối: "thương lượng: … bù lại") · nói rõ hướng đã chốt. Câu nào cũng mở bằng "nói chuyện riêng, nhỏ nhẹ"
+ * (offline nhận ra cảnh qua "Mục tiêu: nói chuyện riêng, nhỏ nhẹ").
+ */
+function supportGoal(i: AgentState, t: AgentState, act: string): string {
+  if (/hỏi han/u.test(act)) {
+    return `nói chuyện riêng, nhỏ nhẹ: ${i.name} hỏi han, lắng nghe là chính, không hứa gì thay công ty (công ty chưa bàn chuyện này); `
+      + `${t.name} lúc đầu dè dặt rồi mở lòng (hoặc vẫn còn lấn cấn); chân thành, một câu đùa nhẹ cho đỡ nặng nề — không sến`;
+  }
+  if (/^thương lượng/u.test(act)) {
+    return `nói chuyện riêng, nhỏ nhẹ: ${i.name} thương lượng thẳng thắn theo hướng vừa nêu; `
+      + `${t.name} nêu điều kiện rồi chịu, hoặc vẫn còn càu nhàu; có một câu đùa nhẹ — không gay gắt`;
+  }
+  return `nói chuyện riêng, nhỏ nhẹ: ${i.name} hỏi han tình hình rồi nói rõ hướng giải quyết vừa nêu và mọi người sẽ hỗ trợ thế nào; `
+    + `${t.name} lúc đầu dè dặt rồi mở lòng (hoặc vẫn còn lấn cấn); chân thành, một câu đùa nhẹ cho đỡ nặng nề — không sến`;
+}
 
 export function sitDeskVisit(k: SitKit, i: AgentState, t: AgentState, m: Motive, act: string, why?: string, tone?: VisitTone): Situation {
   const tAct = actOf(k, t);
@@ -834,7 +868,13 @@ export function sitDeskVisit(k: SitKit, i: AgentState, t: AgentState, m: Motive,
       ? `bất ngờ phát hiện sở thích chung, nói chuyện vui hơn thường ngày, hẹn hò nhau (ăn trưa, cà phê) — tình bạn mới chớm, trong sáng; người khác đi ngang liếc nhìn`
       : tone === 'makeup'
         ? `sau vụ cãi nhau trước đó, ${i.name} tới làm hoà vụng về (mang trà sữa, nói vòng vo); ${t.name} còn giận nhưng mềm dần; chốt bằng câu đùa, quan hệ ấm lại`
-        : m.goal;
+        : tone === 'unbox'
+          ? `${t.name} vừa nhận hàng và khui hộp ngay tại bàn; ${i.name} tò mò ghé xem, trêu "lại tiêu tiền", hỏi han, xin dùng thử; vui, hài, rồi ai về việc nấy`
+          : tone === 'gift'
+            ? `${i.name} mang quà tới tặng ${t.name}; ${t.name} bất ngờ, vừa cảm ơn vừa trêu lại; ấm áp, hài, không sến`
+            : tone === 'support'
+              ? supportGoal(i, t, act)
+              : m.goal;
   return {
     situation: joinSit([
       `${whoRole(i)} đi tới bàn ${whoRole(t)} để ${act}${why ? ` (${why})` : ''}`,
@@ -902,12 +942,14 @@ export type GroupReason =
   | 'deadline' | 'birthday' | 'kpi_risk'
   // v3: hậu quả của quyết định nhân sự / mạch truyện do AI biên kịch lên
   | 'after_resign' | 'after_layoff' | 'after_promotion' | 'after_probation' | 'karaoke' | 'overtime' | 'prank' | 'viral'
-  | 'client_angry' | 'sick' | 'boss_mood' | 'conflict' | 'resign_hint' | 'lost_item' | 'crush' | 'news';
+  | 'client_angry' | 'sick' | 'boss_mood' | 'conflict' | 'resign_hint' | 'lost_item' | 'crush' | 'news'
+  // v5: tình huống công ty — note = câu bàn tán đã điền tên (src/content/situations.ts)
+  | 'situation';
 export const GROUP_REASONS: GroupReason[] = ['random', 'boss_left', 'boss_back', 'after_catch', 'after_firing',
   'after_warning', 'payday', 'wifi_down', 'server_down', 'deal', 'release', 'lunch_plan', 'end_of_day', 'new_hire',
   'late', 'deadline', 'birthday', 'kpi_risk',
   'after_resign', 'after_layoff', 'after_promotion', 'after_probation', 'karaoke', 'overtime', 'prank', 'viral',
-  'client_angry', 'sick', 'boss_mood', 'conflict', 'resign_hint', 'lost_item', 'crush', 'news'];
+  'client_angry', 'sick', 'boss_mood', 'conflict', 'resign_hint', 'lost_item', 'crush', 'news', 'situation'];
 export interface ReasonData {
   name?: string; label?: string; note?: string;
   /** id người được nhắc (vd người vừa bị đuổi) → Director đặt làm aboutId nếu người đó không ở trong nhóm chat */
@@ -955,6 +997,7 @@ const GROUP_TEXT: Record<GroupReason, (d: ReasonData) => string> = {
   lost_item: (d) => `${d.name} làm mất ${d.note || 'món đồ'} và đang đi hỏi khắp văn phòng. Cả nhóm vào đoán vị trí, khịa tính hay quên, có người thú nhận cầm nhầm`,
   crush: (d) => `Có tin đồn nhẹ rằng ${d.name} đang để ý ${d.note || 'ai đó'} trong công ty. Cả nhóm trêu trong sáng, không ai nói gì quá đà`,
   news: (d) => `Có người ném vào nhóm một tin đang hot${d.note ? ` ("${d.note}")` : ''}. Cả nhóm bàn tán cảm nghĩ, mỗi người một ý, lạc đề dần`,
+  situation: (d) => d.note || 'Công ty đang có chuyện, cả nhóm bàn tán, mỗi người đoán một kiểu, có người lo, có người khịa',
 };
 
 export function sitGroupChat(k: SitKit, reason: GroupReason, people: AgentState[], d: ReasonData = {}): Situation {
@@ -985,9 +1028,9 @@ export function sitGroupChat(k: SitKit, reason: GroupReason, people: AgentState[
 
 // ---------------------------------------------------------------- company_chat
 export type CompanyReason = 'morning' | 'release' | 'deal' | 'new_hire' | 'payday' | 'incident' | 'kpi_push' | 'announce' | 'firing'
-  | 'promotion' | 'layoff' | 'resign' | 'team_building' | 'viral' | 'bonus';
+  | 'promotion' | 'layoff' | 'resign' | 'team_building' | 'viral' | 'bonus' | 'shopping' | 'situation';
 export const COMPANY_REASONS: CompanyReason[] = ['morning', 'release', 'deal', 'new_hire', 'payday', 'incident', 'kpi_push', 'announce', 'firing',
-  'promotion', 'layoff', 'resign', 'team_building', 'viral', 'bonus'];
+  'promotion', 'layoff', 'resign', 'team_building', 'viral', 'bonus', 'shopping', 'situation'];
 
 const COMPANY_TEXT: Record<CompanyReason, (d: ReasonData, k: SitKit) => string> = {
   morning: () => 'Đầu ngày, sếp gửi một câu nói truyền cảm hứng (có thể nhầm tác giả) vào nhóm công ty và nhắc mục tiêu hôm nay; nhân viên thả tim, "Dạ sếp", có người nịnh lố',
@@ -1014,6 +1057,10 @@ const COMPANY_TEXT: Record<CompanyReason, (d: ReasonData, k: SitKit) => string> 
   team_building: () => 'Sếp thông báo chiều nay có hoạt động gắn kết nhỏ ở góc chill (trà sữa, trò chơi), yêu cầu "ai cũng tham gia"; nhân viên hào hứng giả, hỏi khéo có được về sớm không',
   viral: (d) => `Sếp khen ${d.name} vì clip/bài đăng đang lên xu hướng, nhắc "thương hiệu công ty"; mọi người chúc mừng, có người xin bí kíp`,
   bonus: (d) => `Sếp thông báo thưởng nóng cho ${d.name} vì KPI xuất sắc; mọi người chúc mừng, có người hỏi khéo "tiêu chí là gì ạ"`,
+  // v4: "vụ mua sắm" (src/content/shopping.ts) — note = câu thông báo đã điền tên
+  shopping: (d) => `${d.note || 'Sếp phát động một phong trào mới trong công ty'}; nhân viên dạ vâng rôm rả, có người hỏi khéo "có được trừ vào lương không ạ", có người hào hứng giả`,
+  // v5: thông báo quyết định sau cuộc họp xử lý tình huống — note = "Sếp thông báo …" đã điền
+  situation: (d) => `${d.note || 'Sếp thông báo quyết định mới của công ty'}; nhân viên trả lời "Dạ", người ủng hộ thật, người hỏi khéo chi tiết, ẩn ý bất mãn rất kín`,
 };
 
 export function sitCompanyChat(k: SitKit, reason: CompanyReason, people: AgentState[], d: ReasonData = {}): Situation {
@@ -1339,7 +1386,7 @@ export function sitPingpong(k: SitKit, a: AgentState, b: AgentState): Situation 
 //  showroom_chat (v2) — phòng trưng bày: 2 kệ (làm đẹp / công nghệ), SPOTS.showroom_beauty / showroom_tech
 //  do sim engineer thêm trong map.ts; mọi tra cứu đều phòng khi chưa có (?? []).
 // =====================================================================
-export const SHELF_LABEL: Record<ProductShelf, string> = { beauty: 'kệ làm đẹp', tech: 'kệ công nghệ' };
+export const SHELF_LABEL: Record<ProductShelf, string> = { beauty: 'kệ làm đẹp & thời trang', tech: 'kệ công nghệ & nhà cửa' };
 export const SHELF_SPOT: Record<ProductShelf, string> = { beauty: 'showroom_beauty', tech: 'showroom_tech' };
 const SHOWROOM_SPOT_RE = /^showroom_(beauty|tech)(?::|$)/;
 
@@ -1419,30 +1466,35 @@ export function pickRecommender(people: AgentState[], shelf: ProductShelf): Agen
 }
 
 const SHOWROOM_GOALS = [
-  'người khoe khuyên thật lòng, người kia giả vờ không quan tâm rồi lén hỏi tên shop',
+  'người nghe giả vờ không quan tâm rồi lén hỏi tên shop',
   'người nghe khịa "ăn hoa hồng hả" rồi tự thấy cũng muốn mua, chốt bằng "để tối săn sale"',
-  'so với món cũ đang xài ở nhà, cãi nhẹ, cuối cùng rủ mua chung cho được freeship',
-  'người nghi ngờ nhất lại là người đòi mượn xài thử trước, chốt bằng một câu hài',
-  'tranh nhau kể trải nghiệm, một người kể lố, người kia kéo về sự thật',
+  'so với món cũ đang dùng ở nhà, cãi nhẹ, cuối cùng rủ mua chung cho được freeship',
+  'người nghi ngờ nhất lại là người đòi mượn dùng thử trước, chốt bằng một câu hài',
+  'tranh nhau kể, một người kể lố, người kia kéo về sự thật',
+  'đang bàn thì có người đi ngang chen vào hỏi, cả nhóm giải tán vì sợ sếp thấy',
 ];
 
-/** situation cho showroom_chat: kệ đang đứng, món trên kệ + nhận xét của chủ dự án làm chất liệu, đúng 1 câu product=true */
+/**
+ * situation cho showroom_chat: kệ đang đứng + món trên kệ + "kiểu chuyện" (angle) do Director chọn
+ * (đã mua thấy ổn bất ngờ, săn sale, mua chung, mua tặng rồi giữ luôn…); đúng 1 câu product=true.
+ */
 export function sitShowroom(
   k: SitKit, people: AgentState[], shelf: ProductShelf,
-  product: { name: string; note: string; emoji?: string }, recommender: AgentState, nudged: boolean,
+  product: { name: string; short?: string; emoji?: string; angle?: string }, recommender: AgentState, nudged: boolean,
 ): Situation {
   const rec = people.find((p) => p.id === recommender.id) ?? people[0];
   const others = people.filter((p) => p.id !== rec.id);
   const where = SHELF_LABEL[shelf];
   const how = nudged
-    ? `${rec.name} vừa kéo ${listVi(others.map((o) => o.name)) || 'mọi người'} qua coi đồ mới trên kệ`
+    ? `${rec.name} vừa kéo ${listVi(others.map((o) => o.name)) || 'mọi người'} qua coi đồ trên kệ`
     : 'ai cũng tranh thủ nghỉ tay ra ngắm đồ';
-  const note = cut(product.note, 170);
+  const call = product.short || product.name;
   return {
     situation: joinSit([
       `${timeFlavor(k.w.minuteOfDay())}. ${listVi(people.map((p) => p.name))} đứng trước ${where} trong phòng trưng bày của công ty — ${how}`,
-      `Trên kệ có ${product.emoji ? `${product.emoji} ` : ''}"${cut(product.name, 60)}"${note ? ` — lý do người dùng thích: "${note}"` : ''}`,
-      `${rec.name} đã xài món này và mê: kể trải nghiệm thật bằng lời mình trong đúng 1 câu nhắc món đồ (câu đó product=true, không nói giá, không nói link); ${listVi(others.map((o) => o.name)) || 'người kia'} khịa hoặc nghi ngờ, hỏi giá nhưng không ai nói giá cụ thể`,
+      `Trên kệ có ${product.emoji ? `${product.emoji} ` : ''}${cut(call, 60)}`,
+      product.angle ? `Chuyện quanh món này: ${cut(product.angle, 200)}` : '',
+      `${rec.name} là người nhắc tới món đồ trong đúng 1 câu (câu đó product=true, không nói giá, không nói link); ${listVi(others.map((o) => o.name)) || 'người kia'} phản ứng đúng tính cách`,
       ...groupDynamics(people, 1),
       bossMood(k, people),
       `Mục tiêu: ${pick(SHOWROOM_GOALS)}`,
@@ -1623,5 +1675,70 @@ export function sitLayoff(k: SitKit, boss: AgentState | null, hr: AgentState, em
       `Mục tiêu: buồn mà vẫn có duyên, có một câu chốt đáng nhớ của ${emp.name} trước khi ôm thùng đồ ra về; không tàn nhẫn`,
     ]),
     extra: commonExtra(k, [emp], { recent: 0, quirk: true }),
+  };
+}
+
+// ================================================================ v5: tình huống công ty (docs/04 §16)
+const STANCE: Record<RoleKey, string> = {
+  boss: 'lo tiền, uy tín và giữ đội ngũ',
+  hr: 'lo tinh thần anh em và chuyện giữ người',
+  techlead: 'lo tiến độ và chất lượng sản phẩm',
+  senior: 'lo tiến độ, ngại bị dồn việc',
+  junior: 'sợ bị giao thêm việc, ít dám nói',
+  qa: 'lo chất lượng, sợ làm vội sinh bug',
+  designer: 'lo trải nghiệm khách và hình ảnh',
+  saleslead: 'lo khách hàng, công nợ và doanh số',
+  salesnew: 'lo chỉ tiêu, sợ bị khách mắng',
+  marketing: 'lo hình ảnh công ty trên mạng',
+};
+
+/**
+ * situation cho crisis_meeting: họp kín xử lý một tình huống công ty. Danh sách PHƯƠNG ÁN không nằm ở đây
+ * (prompt in riêng từ req.crisis.options để không bị cắt ở trần 690 ký tự); AI chốt 1 mã vào verdict.
+ */
+export function sitCrisisMeeting(k: SitKit, chair: AgentState, members: AgentState[], center: AgentState | null,
+  info: { title: string; note: string; topic: string }): Situation {
+  const others = members.filter((m) => m.id !== chair.id && m.id !== center?.id);
+  const stance = others.map((m) => `${m.name} ${STANCE[m.role] ?? 'góp ý theo vai'}`);
+  return {
+    situation: joinSit([
+      `${whoRole(chair)} triệu tập họp kín ở phòng họp vì chuyện ${info.title.toLowerCase()}: ${cut(info.note, 160)}`,
+      `Cần quyết: ${cut(info.topic, 120)}`,
+      center ? `Có mặt cả ${whoRole(center)} — người trong cuộc, tự giải thích, bảo vệ mình, có thể nói thẳng` : '',
+      stance.length ? `Mỗi người nhìn theo vai: ${stance.join('; ')}` : '',
+      ...groupDynamics([chair, ...members], 1),
+      `Mục tiêu: bàn thật như cuộc họp công ty — nêu tình hình cụ thể, mỗi người đề xuất theo vai, có người phản biện và lo ngại hậu quả; `
+      + `${chair.name} CHỐT đúng 1 phương án trong PHƯƠNG ÁN ở câu cuối, nói rõ vì sao; nghiêm túc mà vẫn có chất hài văn phòng`,
+    ]),
+    extra: commonExtra(k, [chair, ...members], { recent: 2, quirk: false }),
+  };
+}
+
+/**
+ * situation cho pep_talk ("công tác tư tưởng"): all = sếp gom cả phòng vào phòng họp; one = gọi riêng 1 người;
+ * mediate = ngồi giữa hai người đang căng. AI quyết verdict inspired | unmoved theo tâm trạng, quan hệ, tính cách.
+ */
+export function sitPepTalk(k: SitKit, speaker: AgentState, audience: AgentState[],
+  info: { variant: 'all' | 'one' | 'mediate'; note: string; topic: string; a?: AgentState; b?: AgentState }): Situation {
+  const moods = audience.map((p) => `${p.name} ${Math.round(fin(p.mood, 60))}`).join(', ');
+  const open = info.variant === 'mediate' && info.a && info.b
+    ? `${whoRole(speaker)} mời ${who(info.a)} và ${who(info.b)} vào phòng họp ngồi lại với nhau: ${cut(info.note, 140)}`
+    : info.variant === 'one' && audience[0]
+      ? `${whoRole(speaker)} gọi riêng ${whoRole(audience[0])} vào nói chuyện: ${cut(info.note, 140)}`
+      : `${whoRole(speaker)} gom mọi người vào phòng họp làm "công tác tư tưởng": ${cut(info.note, 140)}`;
+  // tiêu chí verdict đã nằm ở YÊU CẦU (VERDICT_RULES.pep_talk) — ở đây chỉ nói "hai bên làm lành hay không" cho rõ nghĩa hoà giải
+  const goal = info.variant === 'mediate'
+    ? `Mục tiêu: hai bên lần lượt kể tội nhau rồi dịu dần (hoặc không), ${speaker.name} làm trọng tài, không bênh ai; kết thúc làm lành (bắt tay, hẹn đi ăn) hoặc vẫn căng`
+    : `Mục tiêu: ${speaker.name} nói đúng chất ${speaker.role === 'boss' ? 'sếp (kể chuyện khởi nghiệp, ví von golf, "chúng ta là một gia đình", hứa có điều kiện)' : 'người làm quản lý (chân thành, cụ thể, hứa trong khả năng)'}; `
+      + 'người nghe phản ứng thật theo tâm trạng và tính cách: có người cảm động, có người gật gù cho qua, có người hỏi xoáy chuyện lương thưởng';
+  return {
+    situation: joinSit([
+      open,
+      `Điều cần nói: ${cut(info.topic, 120)}`,
+      moods ? `Tâm trạng người nghe (0–100): ${moods}` : '',
+      ...groupDynamics([speaker, ...audience], 1),
+      goal,
+    ]),
+    extra: commonExtra(k, audience, { recent: 1, quirk: true }),
   };
 }

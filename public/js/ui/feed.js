@@ -261,6 +261,7 @@ const ICON_TYPE = {
   '😱': 'boss_catch', '⚠': 'hr_warning', '📦': 'firing', '🔥': 'incident', '😤': 'confront',
   '🎉': 'celebration', '👋': 'welcome', '🏓': 'pingpong_match', '🤝': 'interview', '🛍': 'showroom_chat',
   '🗞': 'news_chat', '⚖': 'hr_review', '🚪': 'resign_talk', '💵': 'raise_request', '🎖': 'promotion', '📉': 'layoff',
+  '🧯': 'crisis_meeting', '📣': 'pep_talk',
 };
 function guessScene(e) {
   const icon = str(e.icon, 8);

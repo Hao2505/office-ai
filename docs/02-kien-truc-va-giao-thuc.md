@@ -1,6 +1,6 @@
 # Kiến trúc & giao thức
 
-> Cập nhật lần cuối: 2026-11-02 · Phạm vi: `src/server.ts`, `src/types.ts`, vòng lặp + xuất dữ liệu của `src/sim/world.ts`, vòng đời cảnh trong `src/sim/director.ts`, điểm nối `src/ai/brain.ts` → `router.ts` → `llm.ts` → `sanitize.ts`, phía trình duyệt `public/js/net.js` + `public/js/store.js` · Đọc khi: cần hiểu các thành phần nối với nhau thế nào, thêm/sửa một thông điệp WebSocket hay route HTTP, thêm trường vào `src/types.ts`, debug nhân vật giật / mất kết nối / không thấy bảng dev / người xem thấy nhầm số liệu hệ thống.
+> Cập nhật lần cuối: 2026-11-03 · Phạm vi: `src/server.ts`, `src/types.ts`, vòng lặp + xuất dữ liệu của `src/sim/world.ts`, vòng đời cảnh trong `src/sim/director.ts`, điểm nối `src/ai/brain.ts` → `router.ts` → `llm.ts` → `sanitize.ts`, phía trình duyệt `public/js/net.js` + `public/js/store.js` · Đọc khi: cần hiểu các thành phần nối với nhau thế nào, thêm/sửa một thông điệp WebSocket hay route HTTP, thêm trường vào `src/types.ts`, debug nhân vật giật / mất kết nối / không thấy bảng dev / người xem thấy nhầm số liệu hệ thống.
 
 Tài liệu này trả lời câu hỏi: **dữ liệu chạy từ đâu tới đâu, theo nhịp nào, qua hợp đồng kiểu nào, và phần nào chỉ admin mới được thấy**. Nó không mô tả luật mô phỏng (xem [03-mo-phong-the-gioi.md](03-mo-phong-the-gioi.md)), luật chọn cảnh / nhân sự / mạch truyện ([04-dao-dien-cau-chuyen-nhan-su.md](04-dao-dien-cau-chuyen-nhan-su.md)), chính sách từng nhà cung cấp AI ([05-lop-ai.md](05-lop-ai.md)), kho tin RSS ([06-tin-tuc-thoi-su.md](06-tin-tuc-thoi-su.md)), cách vẽ canvas ([07-frontend-ve-canvas.md](07-frontend-ve-canvas.md)) hay vận hành VPS ([10-van-hanh-deploy.md](10-van-hanh-deploy.md)). Hợp đồng kiểu dữ liệu gốc là `src/types.ts`; `SPEC.md` §7 và §10.5 là bản mô tả cũ hơn của cùng giao thức — khi hai bên lệch thì code (và tài liệu này, đã đối chiếu từng dòng ngày 2026-11-02) thắng; các chỗ lệch được liệt kê ở mục cuối. Tổng quan sản phẩm và nguyên tắc của chủ dự án: [01-tong-quan.md](01-tong-quan.md), `README.md`.
 
@@ -66,7 +66,7 @@ Tài liệu này trả lời câu hỏi: **dữ liệu chạy từ đâu tới �
 | # | Dòng | Việc | Vì sao thứ tự này quan trọng |
 |---|---|---|---|
 | 1 | `server.ts:9` | `import { CONFIG }` → `config.ts` đọc `.env` (`dotenv`) và dựng danh sách provider. | Mọi module sau đó đọc `CONFIG` đã cố định. |
-| 2 | `:146` | `ASSET_VERSION = computeAssetVersion()` băm toàn bộ `public/` (mức module, trước cả khi dựng World). | Phiên bản tài nguyên chỉ tính **một lần** → sửa `public/` phải khởi động lại (§7). |
+| 2 | `:145-150` | `ASSET_VERSION = computeAssetVersion()` băm toàn bộ `public/` (mức module, trước cả khi dựng World); cùng lúc `OG_VERSION` = SHA-1 (10 ký tự) **nội dung** `public/og-image.jpg` (không có file → `'0'`). | Phiên bản tài nguyên và phiên bản ảnh xem trước chỉ tính **một lần** → sửa `public/` phải khởi động lại (§7, §7.1). |
 | 3 | `:245-247` | `getArchive().configure({ enabled: CONFIG.historyEnabled, dir, keepDays, gzipAfterDays }).start()` | Archive bật **trước** World để dòng log đầu tiên của World cũng được lưu. |
 | 4 | `:248` | `brain = createBrain(CONFIG)` → bên trong `createRouter(CONFIG)` dựng 1 client/provider, in dòng giới thiệu provider. | Brain phải có trước World (World cần `brain.usage()` cho `status`). |
 | 5 | `:249` | `world = new World({ config: CONFIG, brain, emit: broadcast })` — constructor gọi `freshInit()` ngay (`world.ts:473`): dựng đội hình mới, `planDay(1)`, **đã log "🌅 … ngày 1 — văn phòng mở cửa"** (và có thể vài dòng khác) dù sau đó sẽ khôi phục từ file. | `emit` của World chính là `broadcast` của server (lúc này chưa có socket nào nên không gửi đi đâu, nhưng archive **đã** nhận các dòng log "ngày 1" này — xem câu hỏi mở). |
@@ -210,7 +210,7 @@ Qua được bước lọc, Director gọi `brain.reserve(priority)` (`brain.ts:
 3. `d.sit(people, label)` viết tình huống tiếng Việt (≤ 690 ký tự, `scenes.ts`). 1/3 số cảnh `pantry_chat`/`lunch` có **tin thật** len vào (`d.news`) nếu còn nhịp (`director.ts:1223-1231`).
 4. Dựng `SceneRequest` (`types.ts:227-254`): `sceneId = sc<day>_<seq>`, `type`, `channel`, `locationLabel`, `situation`, `participants` ([0] = người khởi xướng), `minLines/maxLines` từ `SCENE_DEFS`, `allowedEffects`, `priority`, tuỳ chọn `topicHint`, `aboutId`, `extra` (≤ 6 dòng), `rumor`, `news`, `hrDossier`, `product { id, name, pitch, preferSpeaker }`.
 5. Giao quyền: `office = scene` / `online = scene`; mọi người `a.sceneId = sid`; văn phòng → `w.setActivity(id, 'scene', 600, { target, label, emote })` (World sẽ dẫn họ đi tới chỗ); online → `a.onPhone = true` (client hiện 📱, không di chuyển). Cập nhật các cap: `productLock`, `lastShowroomAt`, `markNewsUsed`, `lastNewsAt`.
-6. `brain.generateScene(req, this.ctx(), via)` được gọi **ngay, không `await`**; khi promise về mà cảnh còn sống (`isLive`) → `cleanResult` (`director.ts:1335-1361`: speaker ∈ participants, ≤ `maxLines + 2` dòng, text ≤ 240 ký tự, emote ≤ 8, verdict ∈ `VERDICTS`, hrDecisions ≤ 12) → `scene.result`; không hợp lệ → `scene.failed = true`.
+6. `brain.generateScene(req, this.ctx(), via)` được gọi **ngay, không `await`**; khi promise về mà cảnh còn sống (`isLive`) → `cleanResult` (`director.ts:1335-1361`: speaker ∈ participants, ≤ `maxLines + 2` dòng, text ≤ 240 ký tự, emote ≤ 8, verdict ∈ `VERDICT_OK` (Record đầy đủ theo union `Verdict`), hrDecisions ≤ 12) → `scene.result`; không hợp lệ → `scene.failed = true`.
 
 `PromptContext` (`director.ts:3994-4015`, kiểu `types.ts:494-506`): `companyName`, `company`, `day`, `minuteOfDay`, `weekday`, `timeLabel`, `agents` (mọi agent theo id, **kể cả người đã nghỉ trong `departed` để tra tên**), `roster` (active), `recentSummaries` (8 tóm tắt gần nhất, chống lặp), `bossAway`, `bossNote`.
 
@@ -238,7 +238,7 @@ Qua được bước lọc, Director gọi `brain.reserve(priority)` (`brain.ts:
 | `product` | Chỉ khi `req.product`: đúng 1 dòng `product: true` (nhiều cờ → chọn câu nhắc tên rõ nhất; không cờ → tự gắn nếu `mentionScore ≥ 3`). |
 | hiệu ứng | Chỉ loại trong `allowedEffects`; id phải tồn tại; cộng dồn rồi kẹp: quan hệ ±15 (`to` ∈ participants ∪ `aboutId`), mood ±15, kpi ±25; ký ức ≤ 1/người, ≤ 120 ký tự (cảnh có tin → ký ức theo mẫu cố định "Bàn tin … (nguồn)"). |
 | `rumor` | Có `req.rumor` → chủ thể do Director quyết, model quên text thì giữ bản cũ; không có → chủ thể phải ngoài participants và không phải ứng viên. |
-| `verdict` | `normalizeVerdict(type, raw)` theo `VERDICT_BY_TYPE` (interview → `hired/rejected`, mặc định `hired`; resign_talk → `stay/leave`, mặc định `stay`; raise_request → `approved/denied`, mặc định `denied`); cảnh khác luôn `null`. |
+| `verdict` | `normalizeVerdict(type, raw)` theo `VERDICT_BY_TYPE` (interview → `hired/rejected`, mặc định `hired`; resign_talk → `stay/leave`, mặc định `stay`; raise_request → `approved/denied`, mặc định `denied`; v5 crisis_meeting → mã phương án **đã đưa ra bàn** (`plan_a..plan_d`, hiểu cả "Phương án C" / số thứ tự), không khớp → `null`; pep_talk → `inspired/unmoved`, phủ định theo từ — "chưa đủ thuyết phục" là `unmoved`); cảnh khác luôn `null`. Chi tiết: [05-lop-ai.md](05-lop-ai.md) §8.2. |
 | `hrDecisions` | Chỉ `hr_review`: `sanitizeHrDecisions` lọc theo `hrDossier[].allowed`, mục ngoài hàng rào đổi thành `none` kèm lý do `ngoài hàng rào (<action>)`. |
 | `summary` | ≤ 160 ký tự; hỏng → `deriveSummary` tự viết. |
 
@@ -276,7 +276,7 @@ Qua được bước lọc, Director gọi `brain.reserve(priority)` (`brain.ts:
 
 Không có ACK, không có số thứ tự, không gửi lại: client phải coi `hello` là **ảnh chụp đầy đủ** và các tin sau là **gia tăng**; mất tin → tự lành khi `agents`/`status` kế tiếp tới (2 s) hoặc khi kết nối lại (nhận `hello` mới, `store.onHello` reset toàn bộ).
 
-### 5.2 Bảng `ServerMsg` (`types.ts:459-486`)
+### 5.2 Bảng `ServerMsg` (`types.ts` `ServerMsg`, ≈ dòng 500–527)
 
 | `t` | Ai phát | Khi nào | Trường | Kích thước (ước lượng, chưa đo) | Socket thường vs dev |
 |---|---|---|---|---|---|
@@ -357,7 +357,7 @@ Chỉ agent `present === true` được đưa vào (kể cả người ẩn — 
 
 `bubble.durationMs` do Director tính (§4.6), World kẹp 300..30 000; client kẹp lại 700..15 000 và chỉ dùng `bubbleDuration(text)` của mình (`clamp(1600 + 55×len, 2200, 7500)`) làm **dự phòng** khi server không gửi.
 
-### 5.7 `ClientMsg` (`types.ts:488-491`) và kiểm tra phía server (`parseClientMsg`, `server.ts:225-241`)
+### 5.7 `ClientMsg` (`types.ts` `ClientMsg`, ≈ dòng 529–532) và kiểm tra phía server (`parseClientMsg`)
 
 | Thông điệp | Ai gửi | Server xử lý |
 |---|---|---|
@@ -367,7 +367,7 @@ Chỉ agent `present === true` được đưa vào (kể cả người ẩn — 
 
 Luật chung: binary → bỏ; rỗng hoặc > 2048 byte → bỏ; JSON hỏng / không phải object → bỏ; socket **không có quyền dev** gửi lệnh dev → bỏ và `noteIgnoredDev()` (đếm, cảnh báo ≤ 1 lần/phút); socket dev: rate limit `DEV_RATE = 10 lệnh / 5 s` cửa sổ trượt, vượt → bỏ im lặng. `world.handleClient` (`world.ts:949-957`) kiểm lại `t === 'dev'` và tên sự kiện trong `DEV_EVENTS` của World (`world.ts:105-108`).
 
-Thêm một `DevEventName` mới phải sửa **5 chỗ**: `types.ts:454-457`, `server.ts:48-51`, `world.ts:105-108`, `director.ts handleEvent` (`:503-521`), `public/js/labels.js DEV_EVENTS` (`:36`). **Bẫy**: vì `World.devEvent` chuyển tiếp mặc định mọi tên lạ cho Director và `handleEvent` có `default: break`, quên thêm `case` ở Director thì nút vẫn bấm được, qua hết mọi whitelist nhưng **không làm gì và không báo lỗi**. Cùng hàm `handleEvent` còn được gọi với `auto = true` từ sự kiện tự lên lịch trong ngày (`:828`) và hành động `kind 'event'` của mạch truyện (`:3720`) — `case` mới phải xử lý cả hai đường (`auto` quyết định có toast phản hồi hay im lặng).
+Thêm một `DevEventName` mới phải sửa **5 chỗ**: `types.ts` `DevEventName` (≈ dòng 495), `server.ts` `DEV_EVENTS`, `world.ts:105-108`, `director.ts handleEvent` (`:503-521`), `public/js/labels.js DEV_EVENTS` (`:36`). **Bẫy**: vì `World.devEvent` chuyển tiếp mặc định mọi tên lạ cho Director và `handleEvent` có `default: break`, quên thêm `case` ở Director thì nút vẫn bấm được, qua hết mọi whitelist nhưng **không làm gì và không báo lỗi**. Cùng hàm `handleEvent` còn được gọi với `auto = true` từ sự kiện tự lên lịch trong ngày (`:828`) và hành động `kind 'event'` của mạch truyện (`:3720`) — `case` mới phải xử lý cả hai đường (`auto` quyết định có toast phản hồi hay im lặng).
 
 ---
 
@@ -386,8 +386,8 @@ Router nằm trong `createServer` (`server.ts:401-446`), thứ tự xét **đún
 | 6 | `/api/history` | GET/HEAD | công khai | không `date` → danh sách; `date=YYYY-MM-DD`, `offset` (0..1e9), `limit` (1..5000, mặc định 5000) | không date: `{ enabled, days: [{ date, count, bytes, gz }], stats: { queued, written, dropped, errors, lastFlushAt, lastRotateAt } }` · có date: `{ date, offset, limit, count, entries: [{ ts, kind, data }] }` · `400` date sai · `404` không có ngày · `429 Retry-After: 3` khi > `HISTORY_MAX_INFLIGHT = 3` lần đọc song song · `500` | ngày đã nén (`isFrozenDay`): `public, max-age=86400`; còn lại `no-store` | `:292-327` |
 | 7 | `/go/:productId` | GET/HEAD | công khai | `src` khớp `/^[A-Za-z0-9_-]{1,32}$/`, lạ → `'khac'` | `302 Location: <product.url>` + `X-Robots-Tag: noindex, nofollow`; id không khớp `/^[A-Za-z0-9_-]{1,80}$/`, không có trong danh mục, hoặc url không http(s) → `404`. **Chỉ GET đếm click** (`world.recordClick`), HEAD không. Không open redirect. | `no-store` | `:330-349` |
 | 8 | `/v/<ver>/<path>` | GET/HEAD | công khai | `ver` khớp `[A-Za-z0-9]{4,40}` | file tĩnh; `immutable` **chỉ khi** `ver === ASSET_VERSION` | `public, max-age=31536000, immutable` hoặc `no-cache` | `:438-439` |
-| 9 | `/`, `/index.html` | GET/HEAD | công khai | — | `index.html` đã viết lại `href/src` → `/v/<ver>/…` (§7) | `no-cache` | `:150-162, 369` |
-| 9 | `/<file>` | GET/HEAD | công khai | — | file tĩnh trong `public/`; `If-Modified-Since` → `304`; `400` đường dẫn hỏng/`\0`; `404` dotfile hoặc `..`; `403` ra ngoài `PUBLIC_ROOT`; symlink ra ngoài → `404`; thư mục → `index.html` | `no-cache` + `Last-Modified` | `:352-399` |
+| 9 | `/`, `/index.html` | GET/HEAD | công khai | — | `index.html` đã viết lại `href/src` → `/v/<ver>/…` (§7) và điền `%OG_VERSION%`, `%SITE_URL%` (§7.1) | `no-cache` | `sendIndexHtml`, `handleStatic` |
+| 9 | `/<file>` | GET/HEAD | công khai | — | file tĩnh trong `public/`; `If-Modified-Since` → `304`; `400` đường dẫn hỏng/`\0`; `404` dotfile hoặc `..`; `403` ra ngoài `PUBLIC_ROOT`; symlink ra ngoài → `404`; thư mục → `index.html`. Từ 2026-11-03 gồm cả file phục vụ chia sẻ / máy tìm kiếm: `/og-image.jpg` (1200×630), `/icon-192.png`, `/icon-512.png`, `/apple-touch-icon.png`, `/site.webmanifest` (`application/manifest+json`), `/robots.txt` (cho mọi bot đọc trang, **chặn `/go/` và `/api/`** để bot không làm phồng số bấm link) | `no-cache` + `Last-Modified` | `handleStatic` |
 
 Ghi chú chung:
 
@@ -407,7 +407,7 @@ Ghi chú chung:
 **Cách làm:**
 
 1. `computeAssetVersion()` (`:129-145`) duyệt đệ quy `PUBLIC_ROOT` (bỏ dotfile), băm SHA-1 chuỗi `"<đường dẫn tương đối>|<size>|<floor(mtimeMs)>\n"` của mọi file → lấy 12 hex đầu. Không có `public/` → `'dev'` (3 ký tự nên không bao giờ khớp `ASSET_PREFIX_RE`, vô hại).
-2. `sendIndexHtml()` (`:150-162`) đọc `index.html` (cache theo mtime), thay mọi `href="…"`/`src="…"` **tương đối** có đuôi `.css|.js` (không bắt đầu `http:`/`https:`/`data:`/`/`) thành `/v/<ASSET_VERSION>/<path>`; trả `Cache-Control: no-cache`. Trong `public/index.html` chỉ có hai tham chiếu như vậy: `href="style.css"` và `src="js/main.js"` (`index.html:13-14`).
+2. `sendIndexHtml()` đọc `index.html` (cache **bản mẫu** theo mtime), thay mọi `href="…"`/`src="…"` **tương đối** có đuôi `.css|.js` (không bắt đầu `http:`/`https:`/`data:`/`/`/`%`) thành `/v/<ASSET_VERSION>/<path>`, thay `%OG_VERSION%`; mỗi request thay tiếp `%SITE_URL%` (§7.1) rồi trả `Cache-Control: no-cache`, `Content-Length` tính theo từng bản. Trong `public/index.html` chỉ có hai tham chiếu `.css/.js` như vậy: `href="style.css"` và `src="js/main.js"`; các `<link>` icon / manifest dùng đường dẫn tuyệt đối (`/icon-192.png`…) — đúng ý, chúng không cần phiên bản.
 3. Vì `main.js` là ES module được nạp từ `/v/<ver>/js/main.js`, mọi `import './store.js'`, `import('./render/office.js')`… tự phân giải trong **cùng tiền tố phiên bản** → toàn bộ `public/js/**` được cache mãi mà không phải sửa import.
 4. Router: `/v/<ver>/<path>` → `handleStatic(path, { immutable: ver === ASSET_VERSION })`. Phiên bản cũ (tab mở từ trước deploy) **vẫn được phục vụ** nhưng `no-cache`.
 
@@ -416,7 +416,16 @@ Ghi chú chung:
 - `ASSET_VERSION` tính **một lần lúc khởi động**. Sửa file trong `public/` mà không khởi động lại → nội dung đổi nhưng URL không đổi → trình duyệt/Cloudflare giữ bản cũ "immutable". `npm run dev` (`tsx watch`) chỉ theo dõi file được import từ `src/`, không theo dõi `public/` (cần kiểm tra). Quy tắc: **đổi `public/` → khởi động lại server**.
 - `deploy/deploy.sh` dùng `rsync -az` (giữ mtime) nên file không đổi không làm đổi phiên bản — đúng ý.
 - Nếu thêm `<link>`/`<script>` mới vào `index.html` với đường dẫn tuyệt đối (`/js/x.js`) thì regex **không** viết lại → file đó bị Cloudflare cache 4 giờ. Luôn dùng đường dẫn tương đối.
-- Font "Be Vietnam Pro" tải từ Google Fonts (`index.html:10-12`) nằm ngoài cơ chế này.
+- Font "Be Vietnam Pro" tải từ Google Fonts nằm ngoài cơ chế này.
+
+### 7.1 Thẻ chia sẻ: `%SITE_URL%`, `%OG_VERSION%` (2026-11-03)
+
+`index.html` có đủ thẻ Open Graph / Twitter / canonical / JSON-LD ([08-frontend-giao-dien.md](08-frontend-giao-dien.md) §2) — các URL tuyệt đối viết bằng chỗ giữ chỗ để một file chạy đúng ở mọi tên miền:
+
+- `%OG_VERSION%` → `OG_VERSION` (băm nội dung `og-image.jpg` lúc khởi động) — `og:image` có `?v=<băm>` nên Facebook / Zalo chỉ tải lại ảnh khi ảnh thật sự đổi.
+- `%SITE_URL%` → `siteOrigin(req)`: `CONFIG.siteUrl` (biến `SITE_URL`, chuẩn hoá bởi `siteUrlOf` trong `config.ts`: chỉ `http:`/`https:`, bỏ `/` cuối, sai định dạng → rỗng) nếu có; không thì `<scheme>://<host>` với `host` = header `Host` đã `toLowerCase` và **phải khớp `HOST_RE`** (`[a-z0-9.-]{1,253}` + cổng tuỳ chọn; lạ → `localhost:<PORT>`, nên không ai chèn được HTML qua header `Host`), `scheme` = https khi `requestIsHttps(req)`: `X-Forwarded-Proto` (giá trị đầu) là `https`, **hoặc** `CF-Visitor` chứa `"https"` (Cloudflare — đúng cả khi Cloudflare nối origin bằng HTTP), hoặc socket TLS. Giá trị điền vào được thoát HTML (`escAttr`).
+- `requestIsHttps` cũng quyết cờ `Secure` của cookie admin trong `handleDevCookie` (§8) — trước đây chỉ xét `X-Forwarded-Proto`/TLS, nay thêm `CF-Visitor`.
+- Kiểm nhanh: `curl -s -H 'Host: example.com' -H 'CF-Visitor: {"scheme":"https"}' http://localhost:<PORT>/ | grep og:url` → `https://example.com/`; Host chứa ký tự lạ → `http://localhost:<PORT>/`. Quy trình tạo ảnh và kiểm sau deploy: [10-van-hanh-deploy.md](10-van-hanh-deploy.md) §7.6.
 
 ---
 
@@ -425,7 +434,7 @@ Ghi chú chung:
 | Bước | Server | Client |
 |---|---|---|
 | Cấu hình | `CONFIG.devPanel` (`DEV_PANEL`), `CONFIG.devToken` (`DEV_TOKEN`). `devAllowed(req)` (`server.ts:68-75`): `devPanel=false` → không ai; `devToken` rỗng → **mọi người** là dev (hành vi v1/v2); có token → lấy `?dev=` từ URL, **chỉ khi query rỗng** mới đọc cookie `vpa_dev`; so bằng `safeEqual` (SHA-256 cả hai rồi `timingSafeEqual`); token ≤ 200 ký tự. | `net.js devToken()` (`:51-74`): lần đầu đọc `?dev=` (ưu tiên) rồi `#dev=`; cất `localStorage['vpa.dev']` (di trú từ `sessionStorage` cũ); gỡ `dev` khỏi URL bằng `history.replaceState` giữ `#tab/#profile`; `#dev=` rỗng → xoá localStorage. |
-| Cookie | `POST /api/dev/login { token }` → `Set-Cookie: vpa_dev=…; HttpOnly; SameSite=Lax; Secure (khi `x-forwarded-proto: https` hoặc TLS); Max-Age 1 năm`. | `syncCookie(token)` gọi **một lần mỗi lần tải trang** (`credentials: 'same-origin'`). |
+| Cookie | `POST /api/dev/login { token }` → `Set-Cookie: vpa_dev=…; HttpOnly; SameSite=Lax; Secure (khi `requestIsHttps`: `X-Forwarded-Proto: https`, `CF-Visitor` https, hoặc TLS); Max-Age 1 năm`. | `syncCookie(token)` gọi **một lần mỗi lần tải trang** (`credentials: 'same-origin'`). |
 | WebSocket | `isDev = devAllowed(req)` lúc nối → `hello.dev`, `status` đầy đủ, nhận lệnh dev. | `wsUrl()` gắn `?dev=<token>` nếu có. `store.dev = !!hello.dev` → bảng dev (`ui/devbar.js`), chip AI (`ui/hud.js`), nhãn nguồn bản tin (`ui/recaps.js`). |
 | HTTP | `/api/stats` cần `devAllowed` (404 nếu không). | — |
 | Thoát | `POST /api/dev/logout` xoá cookie. | Nút 🚪 trong bảng dev → `forgetDevToken()`: xoá storage + logout + `location.reload()`. |
@@ -437,22 +446,22 @@ Bẫy đã biết: mở trang với `#dev=` **rỗng** chỉ xoá localStorage, 
 
 ## 9. Hợp đồng kiểu dữ liệu — `src/types.ts` là nguồn sự thật
 
-`src/types.ts` (602 dòng, dòng 3: "Không đổi shape nếu không cập nhật SPEC.md") là hợp đồng duy nhất cả 4 vùng (sim, drama, ai, server) import. Frontend là JavaScript thuần nên **không được TypeScript kiểm**; `store.js` tự chuẩn hoá phòng thủ từng thông điệp.
+`src/types.ts` (645 dòng, dòng 3: "Không đổi shape nếu không cập nhật SPEC.md"; số dòng dưới đây đúng ngày 2026-11-03 — tìm theo tên kiểu) là hợp đồng duy nhất cả 4 vùng (sim, drama, ai, server) import. Frontend là JavaScript thuần nên **không được TypeScript kiểm**; `store.js` tự chuẩn hoá phòng thủ từng thông điệp.
 
 | Nhóm | Kiểu (dòng) | Ai tạo → ai dùng |
 |---|---|---|
 | Nhân vật | `Look 20-27`, `Traits 30-37`, `Persona 39-57`, `Activity 60-80`, `AgentStatus 89`, `AgentState 91-125` | `content/roster.ts` + AI sinh ứng viên → World giữ; `AgentState` **không** gửi client (có `path`, `spotKey`, `relationships` chi tiết…) |
 | Công ty | `ProjectState 128-135`, `CompanyState 137-144` | World → `StatusInfo.company` |
-| Sản phẩm | `Product 147-161` (có `url` Shopee thật, **chỉ server**), `ProductPublic 166-169` (`url` luôn `/go/<id>?src=…`), `ShowroomProduct 172-179` | `content/products.ts` → `toPublic()` → client |
-| Cảnh | `SceneType 182-193` (24 loại: 18 v1/v2 + 6 v3 `news_chat, hr_review, resign_talk, raise_request, promotion, layoff` — danh sách và luật từng loại ở [04-dao-dien-cau-chuyen-nhan-su.md](04-dao-dien-cau-chuyen-nhan-su.md) §3, không lặp ở đây), `SceneEffectKind 195`, `SceneRequest 227-254`, `SceneLine 256-261`, `SceneResult 263-274`, `Verdict 224`, `HrAction/HrDecision 214-222` | Director → Brain → Director; client chỉ thấy `PublicScene`/`LogEntry` |
-| Thời sự | `NewsCategory 198`, `NewsItem 200-208` (nội bộ, có `summary`), `NewsRef 211` (gửi client) | `news/*` → Director → `LogEntry.news`, `PublicScene.news`, `hello.news` |
-| AI biên kịch / ứng viên / bản tin | `BeatRequest 277-283`, `Beat 285-291`, `BeatPlan 293`, `CandidateRequest 296-303`, `RecapRequest 307-314`, `DayRecap 316-325` | Director ↔ Brain; `DayRecap` tới client qua `recap`/`hello.recaps` |
-| Tin đồn | `RumorVersion 327`, `Rumor 329-337` | `sim/rumors.ts` → client nguyên khối |
-| Log | `LogKind 340`, `LogEntry 342-355` | World/Director → client, archive |
-| Thống kê AI | `ProviderStats 359-377`, `UsageStats 379-396` | Router → Brain `usage()` → `StatusInfo.ai` (bị `publicStatus` che) |
-| Giao thức | `ClockInfo 399-407`, `StatusInfo 409-417`, `PublicAgent 419-436`, `FrameAgent 438-439`, `PublicScene 441-452`, `DevEventName 454-457`, `ServerMsg 459-486`, `ClientMsg 488-491` | World/Director/server ↔ client |
-| Bối cảnh prompt | `PromptContext 494-506`, `KpiResult 305` | Director → Brain |
-| Interface module | `Brain 511-528`, `WorldApi 531-582`, `DirectorApi 585-602` | Hợp đồng hai chiều World ↔ Director, Director ↔ Brain |
+| Sản phẩm | `Product 147-166` (có `url` Shopee thật, **chỉ server**; v4 thêm `short?`, `facts?`, `avoid?`, `hooks?` — chất liệu cho AI, không gửi client), `PriceFeel 169` (v4: `'re' \| 'vua' \| 'cao'` — cảm nhận giá thay cho con số), `ProductCategory 171`, `ProductShelf 172`, `ProductPublic 174-177` (`url` luôn `/go/<id>?src=…`), `ShowroomProduct 180-187` | `content/products.ts` → `toPublic()` → client |
+| Cảnh | `SceneType 190-205` (**26 loại**: 18 v1/v2 + 6 v3 `news_chat, hr_review, resign_talk, raise_request, promotion, layoff` + 2 v5 `crisis_meeting, pep_talk` — danh sách và luật từng loại ở [04-dao-dien-cau-chuyen-nhan-su.md](04-dao-dien-cau-chuyen-nhan-su.md) §3, không lặp ở đây), `SceneEffectKind 206`, `SceneRequest 240-295` (v4: `product` thêm `short?`, `facts?`, `avoid?`, `angle?`, `hook?`, `mode?: 'mention' \| 'showroom' \| 'unboxing' \| 'gift' \| 'owner'`, `priceFeel?` — xem [04](04-dao-dien-cau-chuyen-nhan-su.md) §11; **v5 `crisis?: { kind, title, note, options?: {code, label}[], pick?, variant?: 'all' \| 'one' \| 'mediate', topic?, centerId? }`** — tình huống công ty đang xử lý, phương án đưa ra bàn và lựa chọn dự phòng, xem [04](04-dao-dien-cau-chuyen-nhan-su.md) §16 và [05](05-lop-ai.md) §6.3), `SceneLine 297`, `SceneResult 304` (`verdict` ghi chú thêm crisis_meeting / pep_talk), `Verdict 235-237` (v5 thêm `plan_a, plan_b, plan_c, plan_d, inspired, unmoved`), `HrAction 225`/`HrDecision 229` | Director → Brain → Director; client chỉ thấy `PublicScene`/`LogEntry` |
+| Thời sự | `NewsCategory 209`, `NewsItem 211` (nội bộ, có `summary`), `NewsRef 222` (gửi client) | `news/*` → Director → `LogEntry.news`, `PublicScene.news`, `hello.news` |
+| AI biên kịch / ứng viên / bản tin | `BeatRequest 318`, `Beat 326`, `BeatPlan 334`, `CandidateRequest 337`, `RecapRequest 348`, `DayRecap 357` | Director ↔ Brain; `DayRecap` tới client qua `recap`/`hello.recaps` |
+| Tin đồn | `RumorVersion 368`, `Rumor 370` | `sim/rumors.ts` → client nguyên khối |
+| Log | `LogKind 381`, `LogEntry 383` | World/Director → client, archive |
+| Thống kê AI | `ProviderStats 400`, `UsageStats 420` | Router → Brain `usage()` → `StatusInfo.ai` (bị `publicStatus` che) |
+| Giao thức | `ClockInfo 440`, `StatusInfo 450`, `PublicAgent 460`, `FrameAgent 480`, `PublicScene 482`, `DevEventName 495`, `ServerMsg 500-527`, `ClientMsg 529-532` | World/Director/server ↔ client |
+| Bối cảnh prompt | `PromptContext 535`, `KpiResult 346` | Director → Brain |
+| Interface module | `Brain 552`, `WorldApi 572` (v4 thêm `setDeskItem(id, productId)`: đổi "món đồ trên bàn" khi hàng về / được tặng quà, chỉ nhận id có trong danh mục), `DirectorApi 628` | Hợp đồng hai chiều World ↔ Director, Director ↔ Brain |
 
 ### 9.1 Cách thêm trường an toàn (quy trình đã dùng cho v2/v3)
 
@@ -515,7 +524,7 @@ Hệ quả thiết kế: độ trễ hiển thị ≈ 260–700 ms so với serv
 
 | Nếu bạn thay đổi … | → cập nhật … |
 |---|---|
-| Thêm/bớt một `ServerMsg` | `types.ts:459-486`; nơi phát (World `emit`/Director `world.emit`); `server.ts broadcast` nếu cần bản công khai riêng; `public/js/store.js handleMessage`; `SPEC.md` §7; mục §5.2 tài liệu này; chạy `npm run typecheck && npm run smoke` |
+| Thêm/bớt một `ServerMsg` | `types.ts` `ServerMsg`; nơi phát (World `emit`/Director `world.emit`); `server.ts broadcast` nếu cần bản công khai riêng; `public/js/store.js handleMessage`; `SPEC.md` §7; mục §5.2 tài liệu này; chạy `npm run typecheck && npm run smoke` |
 | Thêm trường vào `hello` | `world.ts hello()`; `store.js onHello` (mặc định khi thiếu); §5.3; nếu là thông tin hệ thống → `publicStatus` hoặc gỡ cho socket thường ở `server.ts:460-463` |
 | Đổi `FrameAgent` / cờ bit | `world.ts frameAgents()`; `store.js onFrame`; `office.js FLAG_*`; `scripts/smoke.ts` (kiểm frame); `SPEC.md` §7; §5.4 |
 | Đổi `FRAME_MS` / `AGENTS_MS` | `store.js NET_BUFFER_*`/`NET_SLACK_MIN` cân lại; §3.3, §10; đo lại độ mượt trên site thật qua Cloudflare |
@@ -523,16 +532,17 @@ Hệ quả thiết kế: độ trễ hiển thị ≈ 260–700 ms so với serv
 | Thêm `DevEventName` | 5 chỗ ở §5.7 (`types.ts`, `server.ts`, `world.ts`, `director.ts handleEvent`, `labels.js DEV_EVENTS`); **bắt buộc có `case` ở `handleEvent`** — không thì rơi `default: break` im lặng (§5.7 bẫy); §5.7; `scripts/smoke.ts` phần nút dev; [04-dao-dien-cau-chuyen-nhan-su.md](04-dao-dien-cau-chuyen-nhan-su.md) §5.7 |
 | Thêm/đổi route HTTP | Thứ tự trong `createServer` (`server.ts:401-446`); quyền (`devAllowed`) nếu lộ hệ thống; bảng §6; nhớ nginx giới hạn `/api/` (`deploy/nginx.site.conf`); [10-van-hanh-deploy.md](10-van-hanh-deploy.md) |
 | Đổi tên cookie `vpa_dev` / key `vpa.dev` / tham số `dev` | `server.ts:72-78`, `public/js/net.js:13, 51-80`, `deploy/nginx.site.conf` (`$arg_dev`), §8, `README.md` §8 |
-| Sửa bất kỳ file trong `public/` | **Khởi động lại server** (ASSET_VERSION); nếu thêm `<script>/<link>` vào `index.html` dùng đường dẫn tương đối; §7 |
+| Sửa bất kỳ file trong `public/` | **Khởi động lại server** (ASSET_VERSION, OG_VERSION); nếu thêm `<script>/<link>` `.css/.js` vào `index.html` dùng đường dẫn tương đối; §7 |
+| Thẻ chia sẻ (`%SITE_URL%`, `%OG_VERSION%`), `siteOrigin` / `requestIsHttps` / `HOST_RE`, `SITE_URL` | §7.1; [08-frontend-giao-dien.md](08-frontend-giao-dien.md) §2; [09-cau-hinh-du-lieu.md](09-cau-hinh-du-lieu.md) (biến `SITE_URL`); [10-van-hanh-deploy.md](10-van-hanh-deploy.md) §7.6; kiểm bằng `curl` như §7.1 (Host lạ phải về localhost) |
 | Đổi thứ tự khởi động / thêm module cần `configure().start()` | `server.ts:243-256` và bảng §2.1; nhớ bật trước World nếu cần nhận log đầu |
 | Đổi `SceneRequest`/`SceneResult`/`LIMITS` sanitize | `types.ts`, `ai/schemas.ts` (JSON schema phải khớp), `ai/sanitize.ts`, `director.ts cleanResult`, `scripts/test-llm.ts`; §4.5; [05-lop-ai.md](05-lop-ai.md) |
 | Đổi `playLine` (thời lượng bong bóng) | `store.js onLog` (clamp 700..15000) và `bubbleDuration` dự phòng; `World.log` clamp 300..30000; §4.6, §5.6 |
 | Đổi shape `StateFile` / `serializeWorld` | `src/sim/persist.ts STATE_VERSION` (chỉ tăng khi cố ý bỏ tương thích), validator `revive*`; §9.1 bước 6; [03-mo-phong-the-gioi.md](03-mo-phong-the-gioi.md) |
-| Thêm method vào `WorldApi`/`DirectorApi`/`Brain` | `types.ts:511-602`; World/Director/Brain implement; `scripts/smoke.ts` spy `DirectorApi` (`:286-305`) phải thêm method tương ứng |
+| Thêm method vào `WorldApi`/`DirectorApi`/`Brain` | `types.ts` (`Brain`, `WorldApi`, `DirectorApi` ≈ dòng 552–645); World/Director/Brain implement; `scripts/smoke.ts` spy `DirectorApi` (`:286-305`) phải thêm method tương ứng |
 | Thêm khoá cấu hình mà Director đọc | `src/config.ts` (khoá camelCase trong `CONFIG`) + `.env.example`; nếu dùng `cfgNum`/`cfgBool` thì tên env trong tham số thứ 3 phải khớp; §1 hàng Config (danh sách 3 ngoại lệ `process.env`); [09-cau-hinh-du-lieu.md](09-cau-hinh-du-lieu.md) §2.3 |
 | Thêm chỗ đọc `process.env` ngoài `config.ts` | Tránh — đưa vào `CONFIG`. Nếu buộc phải: cập nhật danh sách "đúng 3 ngoại lệ" ở §1 và 09 §2.3, 14 §1.1 |
 | Đổi `llmGated()` / điều kiện Brain từ chối (`reserve`) | §4.1 (bước lọc trước + bảng `reserve`); [05-lop-ai.md](05-lop-ai.md); [04-dao-dien-cau-chuyen-nhan-su.md](04-dao-dien-cau-chuyen-nhan-su.md) phần hàng đợi |
-| Thêm `LogKind` mới / đổi ai log `event`–`system` | `types.ts:340`; `store.js onLog`; `ui/feed.js` (pill/thẻ); bảng §5.6 (cột "Ai tạo" ghi rõ World hay Director) |
+| Thêm `LogKind` mới / đổi ai log `event`–`system` | `types.ts` `LogKind` (≈ dòng 381); `store.js onLog`; `ui/feed.js` (pill/thẻ); bảng §5.6 (cột "Ai tạo" ghi rõ World hay Director) |
 | Đổi `Archive.record` / shape dòng JSONL / `maxLineBytes` | `src/sim/archive.ts`; `ui/history.js` (phải chịu `data` lạ, `truncated`); §6 ghi chú; [09-cau-hinh-du-lieu.md](09-cau-hinh-du-lieu.md) |
 | Đổi `SCENE_WATCHDOG_MS` / `MAX_PLAY_MS` | Giữ `MAX_PLAY_MS` (Director) **<** `SCENE_WATCHDOG_MS` (World) để watchdog chỉ là lưới an toàn; §4.6, §9.2 |
 | Đổi `err()`/`guard()` của Director hoặc `reportError` của World | §3.1 (hai lớp bắt lỗi); chuỗi `[director] lỗi ở` / `[world]` dùng để grep log pm2 ([10-van-hanh-deploy.md](10-van-hanh-deploy.md)) |

@@ -156,9 +156,18 @@ export interface Product {
   category?: ProductCategory;
   shelf?: ProductShelf;        // suy từ category
   slot?: number;               // vị trí trên kệ (0-based)
-  note?: string;               // 1 câu nhận xét của chủ dự án ("xài 3 tháng, pin trâu")
+  note?: string;               // 1 câu giới thiệu hiển thị ở tab 🛍️ (thông tin thật, không phải lời chứng thực)
   image?: string;              // URL ảnh tuỳ chọn
+  // --- v4: sản phẩm có "chuyện" (docs/04 §11) — AI đọc các trường này, client không cần
+  short?: string;              // tên gọi đời thường ("chuột gaming không dây") — nhân vật nói tên này
+  spoken?: string;             // mệnh đề nói được (≤ 60 ký tự) cho câu mẫu offline khi pitch lặp lại tên ("bạc 925, có màu hồng")
+  facts?: string;              // điều CÓ THẬT được phép nói (từ trang bán)
+  avoid?: string;              // điều CẤM nói (tuyên bố chưa kiểm chứng, thông số lệch, chủ đề nhạy cảm)
+  hooks?: string[];            // "cớ đời thường" (mệnh đề không chủ ngữ) khiến món này được nhắc tới tự nhiên
 }
+
+/** v4: cảm nhận giá suy từ priceHint — AI chỉ được nói kiểu cảm nhận, không bao giờ nói con số */
+export type PriceFeel = 're' | 'vua' | 'cao';
 
 export type ProductCategory = 'lam-dep' | 'cong-nghe';
 export type ProductShelf = 'beauty' | 'tech';
@@ -190,7 +199,10 @@ export type SceneType =
   | 'resign_talk'      // 🚪 nhân viên chán việc nói chuyện với HR → verdict 'stay' | 'leave'
   | 'raise_request'    // 💵 xin tăng lương với sếp → verdict 'approved' | 'denied'
   | 'promotion'        // 🎖️ công bố thăng chức / thưởng (sau hr_review)
-  | 'layoff';          // 📉 cắt giảm vì công ty lỗ (sau hr_review) — người bị cắt rời công ty như firing
+  | 'layoff'           // 📉 cắt giảm vì công ty lỗ (sau hr_review) — người bị cắt rời công ty như firing
+  // --- v5 "tình huống công ty" (src/content/situations.ts, docs/04 §16)
+  | 'crisis_meeting'   // 🧯 sếp / lead / HR họp xử lý tình huống → verdict = mã phương án AI chốt (plan_a..plan_d)
+  | 'pep_talk';        // 📣 sếp (hoặc HR / lead) làm công tác tư tưởng: cả phòng / 1:1 / hoà giải hai phe → inspired | unmoved
 
 export type SceneEffectKind = 'relationship' | 'mood' | 'memory' | 'kpi' | 'rumor' | 'verdict' | 'decisions';
 
@@ -221,7 +233,9 @@ export interface HrDecision {
   reason: string;             // 1 câu tiếng Việt
 }
 
-export type Verdict = 'hired' | 'rejected' | 'stay' | 'leave' | 'approved' | 'denied';
+export type Verdict = 'hired' | 'rejected' | 'stay' | 'leave' | 'approved' | 'denied'
+  // v5: crisis_meeting = mã phương án được chốt; pep_talk = có thuyết phục được người nghe không
+  | 'plan_a' | 'plan_b' | 'plan_c' | 'plan_d' | 'inspired' | 'unmoved';
 
 /** Director tạo -> Brain sinh thoại */
 export interface SceneRequest {
@@ -235,13 +249,42 @@ export interface SceneRequest {
   aboutId?: string;           // người bị nói tới (vắng mặt) — gossip/confront
   minLines: number;
   maxLines: number;
-  product?: { id: string; name: string; pitch: string; preferSpeaker?: string };
+  product?: {
+    id: string; name: string; pitch: string; preferSpeaker?: string;
+    // --- v4 (tuỳ chọn): chất liệu để món đồ có "chuyện" chứ không chèn ngang
+    short?: string;           // tên gọi đời thường
+    spoken?: string;          // mệnh đề nói được cho câu mẫu offline (thay cho pitch khi có)
+    facts?: string;           // điều có thật được nói
+    avoid?: string;           // điều cấm nói
+    /** kiểu chuyện / cớ (đã điền tên người): "Bảo mua dùng thử, ai ngờ ổn bất ngờ, giờ rủ Vy xài" */
+    angle?: string;
+    /** cớ ngắn dạng mệnh đề cho câu mẫu offline ("ngủ trưa gục bàn dậy là ê cổ") */
+    hook?: string;
+    /** mention = len vào chuyện đang nói; showroom = đứng trước kệ; unboxing = vừa nhận hàng; gift = tặng quà; owner = người đã mua kể lại */
+    mode?: 'mention' | 'showroom' | 'unboxing' | 'gift' | 'owner';
+    priceFeel?: PriceFeel;
+  };
   rumor?: { id: string; aboutId: string; currentText: string; isNew: boolean };
   extra?: string[];           // thêm bối cảnh (mỗi phần tử 1 dòng)
   allowedEffects: SceneEffectKind[];
   priority: Priority;
   // --- v3
   news?: NewsItem;            // news_chat: tin thật đang bàn
+  /**
+   * v5 crisis_meeting / pep_talk: tình huống công ty đang xử lý. options = phương án được đưa ra bàn (AI chốt 1 mã vào verdict);
+   * pick = lựa chọn dự phòng đã chọn sẵn (offline viết thoại theo đúng nó; AI trả sai mã thì Director dùng nó).
+   */
+  crisis?: {
+    kind: string; title: string; note: string;
+    options?: { code: string; label: string }[];
+    pick?: string;
+    /** pep_talk: all = cả phòng · one = nói riêng người trung tâm · mediate = ngồi giữa hai phe */
+    variant?: 'all' | 'one' | 'mediate';
+    /** chủ đề họp / điều cần thuyết phục (đã điền tên) */
+    topic?: string;
+    /** người trung tâm (nếu có) */
+    centerId?: string;
+  };
   /** hr_review: hồ sơ từng người để AI quyết (code đã lọc theo hàng rào hợp lý) */
   hrDossier?: {
     id: string; name: string; roleLabel: string;
@@ -268,7 +311,7 @@ export interface SceneResult {
   memories: { id: string; text: string }[];
   kpiChanges: { id: string; delta: number }[];
   rumor: { aboutId: string; text: string } | null;
-  verdict: Verdict | null;    // interview: hired/rejected · resign_talk: stay/leave · raise_request: approved/denied
+  verdict: Verdict | null;    // interview: hired/rejected · resign_talk: stay/leave · raise_request: approved/denied · crisis_meeting: plan_a..d · pep_talk: inspired/unmoved
   hrDecisions?: HrDecision[] | null;   // chỉ hr_review
   source: 'llm' | 'offline';
 }
@@ -545,6 +588,8 @@ export interface WorldApi {
   hr(): AgentState | undefined;
   bossAway(): boolean;
   bossNote(): string;
+  /** v5: hôm nay văn phòng đóng cửa (cuối tuần ở TIME_MODE=realtime) — tuỳ chọn để bản giả trong test khỏi phải cài */
+  officeClosed?(): boolean;
   company(): CompanyState;
   viewers(): number;
   // --- điều khiển di chuyển / hoạt động
@@ -573,6 +618,8 @@ export interface WorldApi {
   adjust(id: string, d: { energy?: number; mood?: number; stress?: number; kpi?: number }): void;
   changeRelationship(fromId: string, toId: string, delta: number, note: string): void;
   addMemory(id: string, text: string): void;
+  /** v4: đổi "món đồ trên bàn" (hiện trên bàn + hồ sơ) — vd vừa nhận hàng / được tặng quà; id sai → bỏ qua */
+  setDeskItem(id: string, productId: string): void;
   setIncident(kind: CompanyState['incident']): void;
   addRevenue(millionVnd: number): void;
   // --- đầu ra cho client

@@ -14,7 +14,8 @@
     "test": "npm run typecheck && npm run smoke && npm run smoke:story && npm run test:news && npm run test:llm && npm run test:router",
     "test:router": "tsx scripts/test-router.ts",
     "test:news": "tsx scripts/test-news.ts",
-    "eyeball:hr": "tsx scripts/eyeball-hr.ts"
+    "eyeball:hr": "tsx scripts/eyeball-hr.ts",
+    "share-images": "tsx scripts/share-images.ts"
   },
   "dependencies": {
     "dotenv": "^18.0.9",

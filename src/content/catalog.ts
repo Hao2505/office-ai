@@ -2,6 +2,7 @@
 //  Thông tin công ty, kho dự án, kho chủ đề tám chuyện, lý do sếp vắng,
 //  nhãn hoạt động (lười / pantry / ...) cho World + offline + prompt.
 // =====================================================================
+import { SITUATIONS } from './situations.js';
 import type { Activity, NewsCategory, RoleKey } from '../types.js';
 import { blockedTopic, normText } from '../news/filter.js';
 
@@ -323,6 +324,11 @@ export const BEAT_MENU: { kind: string; desc: string }[] = [
   { kind: 'sick_day', desc: 'a ốm bất chợt, xin về sớm hoặc nghỉ, đồng nghiệp gánh việc' },
   { kind: 'karaoke_night', desc: 'cả nhóm rủ đi karaoke tối nay, mai vài người tới trễ mắt thâm quầng' },
   { kind: 'pitch_contest', desc: 'sếp bất ngờ tổ chức buổi "pitch ý tưởng": mỗi người trình bày 1 ý tưởng trời ơi' },
+  // v4: AI biên kịch tự nghĩ chuyện quanh một món trên kệ phòng trưng bày (danh sách món được điền lúc gọi — story.ts)
+  { kind: 'shopping_story', desc: 'chuyện đời thường quanh MỘT món trên kệ phòng trưng bày (ghi đúng tên món vào note): a mua dùng thấy ổn bất ngờ nên rủ b, săn sale được giá mềm, mua chung cho freeship, người nhà mượn luôn không trả, mua tặng rồi giữ luôn, nhờ nhận hàng hộ… — tự nghĩ chuyện mới, hợp lý, không nói giá cụ thể' },
+  // v5: tình huống công ty (src/content/situations.ts) — 4 bước, có họp xử lý do AI chốt phương án; story.ts chỉ đưa ≤ 3 loại hợp
+  // tình hình lên thực đơn mỗi lần (tiết kiệm token) và mỗi lúc chỉ một tình huống mở
+  ...SITUATIONS.map((d) => ({ kind: d.kind, desc: d.menu })),
 ];
 
 export const BEAT_KINDS: string[] = BEAT_MENU.map((b) => b.kind);

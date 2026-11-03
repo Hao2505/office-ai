@@ -35,14 +35,17 @@ export interface SceneLimits {
   extra: number;        // số dòng "bối cảnh thêm"
   extraChars: number;
   situation: number;    // tình huống (Director viết ≤ 690)
+  /** v4: khối sản phẩm co theo bậc — "có thật" và "chuyện" (CẤM / luật giá KHÔNG bao giờ cắt) */
+  prodFacts: number;
+  prodAngle: number;
 }
 
 /** Bậc 0 = đầy đủ nhất; bậc sau gọn hơn. */
 export const SCENE_TIERS: readonly SceneLimits[] = [
-  { bio: 140, voice: 100, feel: 4, mem: 2, memChars: 60, recent: 4, recentChars: 80, extra: 5, extraChars: 130, situation: 700 },
-  { bio: 120, voice: 100, feel: 3, mem: 2, memChars: 55, recent: 5, recentChars: 70, extra: 4, extraChars: 110, situation: 700 },
-  { bio: 100, voice: 90, feel: 2, mem: 1, memChars: 50, recent: 4, recentChars: 70, extra: 3, extraChars: 100, situation: 600 },
-  { bio: 80, voice: 80, feel: 2, mem: 1, memChars: 45, recent: 3, recentChars: 60, extra: 2, extraChars: 90, situation: 500 },
+  { bio: 140, voice: 100, feel: 4, mem: 2, memChars: 60, recent: 4, recentChars: 80, extra: 5, extraChars: 130, situation: 700, prodFacts: 180, prodAngle: 220 },
+  { bio: 120, voice: 100, feel: 3, mem: 2, memChars: 55, recent: 5, recentChars: 70, extra: 4, extraChars: 110, situation: 700, prodFacts: 160, prodAngle: 180 },
+  { bio: 100, voice: 90, feel: 2, mem: 1, memChars: 50, recent: 4, recentChars: 70, extra: 3, extraChars: 100, situation: 600, prodFacts: 130, prodAngle: 150 },
+  { bio: 80, voice: 80, feel: 2, mem: 1, memChars: 45, recent: 3, recentChars: 60, extra: 2, extraChars: 90, situation: 500, prodFacts: 100, prodAngle: 120 },
 ];
 
 /** Bậc khởi điểm theo số người: cảnh đông thì bắt đầu gọn hơn. */
@@ -53,9 +56,10 @@ export function startTier(people: number): number {
 /**
  * Dựng prompt theo bậc, trả về bản đầu tiên nằm trong ngân sách (hoặc bản gọn nhất).
  * render(lim) phải thuần (không tác dụng phụ) vì có thể được gọi vài lần.
+ * allowance: phần cố định không co theo bậc được cộng thêm vào ngân sách (vd khối sản phẩm — prompts.ts PRODUCT_TOKEN_ALLOWANCE).
  */
-export function fitSceneBudget(people: number, render: (lim: SceneLimits) => string): string {
-  const budget = sceneUserTokenBudget(people);
+export function fitSceneBudget(people: number, render: (lim: SceneLimits) => string, allowance = 0): string {
+  const budget = sceneUserTokenBudget(people) + Math.max(0, allowance);
   let out = '';
   for (let t = startTier(people); t < SCENE_TIERS.length; t++) {
     out = render(SCENE_TIERS[t]);

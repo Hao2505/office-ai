@@ -1,6 +1,6 @@
 # Đạo diễn, cảnh, câu chuyện & nhân sự
 
-> Cập nhật lần cuối: 2026-11-02 · Phạm vi: `src/sim/director.ts` (4401 dòng), `src/sim/scenes.ts`, `src/sim/hr.ts`, `src/sim/story.ts`, `src/sim/rumors.ts`, phần kiểu liên quan trong `src/types.ts` và dữ liệu kịch bản trong `src/content/catalog.ts` (`BEAT_MENU`, `PERSONAL_EVENTS`, luật tin) · Đọc khi: cần hiểu vì sao một cảnh xuất hiện (hoặc không), muốn thêm/sửa một loại cảnh, sửa luật nhân sự (HR), sửa AI biên kịch, tin đồn, bản tin cuối ngày, hoặc debug chuyện "nhân vật kẹt trong cảnh / quyết định HR biến mất / cảnh news_chat bắn 2 lần".
+> Cập nhật lần cuối: 2026-11-03 · Phạm vi: `src/sim/director.ts` (≈ 5080 dòng), `src/sim/scenes.ts`, `src/sim/hr.ts`, `src/sim/story.ts`, `src/sim/rumors.ts`, `src/content/shopping.ts` (v4: vụ mua sắm, kiểu chuyện quanh món đồ), `src/content/situations.ts` (v5: tình huống công ty — khủng hoảng, chia phe, chống đối, công tác tư tưởng…), phần kiểu liên quan trong `src/types.ts` và dữ liệu kịch bản trong `src/content/catalog.ts` (`BEAT_MENU`, `PERSONAL_EVENTS`, luật tin) · Đọc khi: cần hiểu vì sao một cảnh xuất hiện (hoặc không), muốn thêm/sửa một loại cảnh, sửa luật nhân sự (HR), sửa AI biên kịch, tin đồn, bản tin cuối ngày, chuyện mua sắm / món đồ trên kệ được nhắc lúc nào và vì sao (§11), tình huống công ty — kẹt tiền, bóc phốt, chia phe, sếp "truyền lửa" — và việc AI chốt cách xử lý (§16), hoặc debug chuyện "nhân vật kẹt trong cảnh / quyết định HR biến mất / cảnh news_chat bắn 2 lần".
 
 Tài liệu này trả lời: **Director quyết định chuyện gì xảy ra lúc nào, với ai, bằng cách nào — và code nào là "hàng rào" để AI không làm điều vô lý.** Nó mô tả lớp "kịch bản" nằm trên lớp mô phỏng thân xác (World, xem [03-mo-phong-the-gioi.md](03-mo-phong-the-gioi.md)) và dưới lớp AI viết thoại (Brain, xem [05-lop-ai.md](05-lop-ai.md)). Phần thời sự (kho tin RSS, bộ lọc) chỉ nói ở góc Director; chi tiết ở [06-tin-tuc-thoi-su.md](06-tin-tuc-thoi-su.md). Hợp đồng gốc vẫn là `SPEC.md` §5 (5.1 bảng loại cảnh, 5.2 lịch, 5.3 vòng đời, 5.4 tin đồn, 5.5 sản phẩm, 5.6 HR v3, 5.7 sự kiện, 5.8 AI biên kịch, 5.9 thời sự), `docs/v3-news.md` (thiết kế gốc v3) và `docs/v2-contract.md` §3 (showroom_chat); tài liệu này **không chép lại** mà chỉ nêu cái code đang làm thật, kèm số dòng để đối chiếu. Mọi tham chiếu `file:dòng` đúng tại thời điểm viết; nếu sửa file hãy tìm theo tên hàm.
 
@@ -68,17 +68,17 @@ Bẫy: thêm trường vào `QData` (`director.ts:251-285`) mà **không** thêm
 
 ---
 
-## 3. Registry cảnh: 24 loại
+## 3. Registry cảnh: 26 loại
 
 Nguồn sự thật: `SCENE_DEFS` (`scenes.ts:88-211`), mỗi `SceneDef` (`scenes.ts:69-84`) có `title, icon, channel, priority, minLines, maxLines, effects, product, label, emote, topics`. `label/emote` là nhãn hoạt động World hiển thị cho người trong cảnh (Director có thể đè bằng `Draft.labels`). Bảng dưới đây ghép registry với **cách Director kích hoạt thật** (hàm `d*` trong `director.ts`) và móc kết `onEndHook` (`director.ts:2608-2638`). Đối chiếu bảng gốc ở `SPEC.md` §5.1.
 
 | type | kênh · prio · dòng | hiệu ứng cho phép · sản phẩm | ai tham gia · chỗ đứng (`Placement`) | kích hoạt khi nào | móc kết |
 |---|---|---|---|---|---|
 | `pantry_chat` ☕ | office · low · 4–8 | relationship, mood, memory · có (`productFor: {}`) | 2–3 người cùng `areaOf` (`findCoLocated` `scenes.ts:446`: sếp bị bỏ 70%, bán kính 10 ô pantry/lounge, 5.5 ô chỗ khác, nhóm 3 với 45%); host `stay`, người cách > 3 ô `visit` host (`dPantry` `1704`) | tự phát, trọng số 3 (`spontaneous` `1073`) | tin len vào → `afterNews` |
-| `desk_visit` 🚶 | office · low · 3–7 | relationship, mood, memory, kpi · registry `false` nhưng Director vẫn cho khi người ghé là **marketing** và không có `tone` (`dDeskVisit` `1853`, `offerProduct` `3875`) | initiator `visit` target đang `sittingAtDesk`; động cơ theo cặp vai `MOTIVES` (16 mục, `scenes.ts:484-581`); `pickDeskVisit` `595` | tự phát (w 2, hoặc 1 khi có "khoảnh khắc thoáng qua"); hàng đợi từ HR (`motiveKey: 'hr_probe'`), deal của saleslead (`sales_promise`), mạch truyện (`tone: tense/warm/makeup`), đi trễ 35% | — |
+| `desk_visit` 🚶 | office · low · 3–7 | relationship, mood, memory, kpi · registry `false` nhưng Director vẫn cho khi người ghé là **marketing** và không có `tone` (`offerProduct` `3978`); v4: mục hàng đợi có `productId` thì món được gắn sẵn qua `attachProduct` (khui hộp / tặng quà / mạch `shopping_story`, §11.5) | initiator `visit` target đang `sittingAtDesk`; động cơ theo cặp vai `MOTIVES` (16 mục, `scenes.ts:484-581`); `pickDeskVisit` `595` | tự phát (w 2, hoặc 1 khi có "khoảnh khắc thoáng qua"); hàng đợi từ HR (`motiveKey: 'hr_probe'`), deal của saleslead (`sales_promise`), mạch truyện (`tone: tense/warm/makeup`), v4 hàng về `tone: unbox` / quà bí mật `tone: gift` (§11.5), đi trễ 35% | — |
 | `gossip` 🤫 | office · low (normal khi seeded/ép) · 4–8 | relationship, memory, **rumor** · không | cặp `mutual ≥ 10` (`pickGossipPair` `623`) nói về `aboutId` **không có trong cảnh**; `joint` thử lần lượt `pantry_table/window/lounge` xáo trộn (`gossipDraft` `1900`) | tự phát w = 1.5 × clamp(gossip, 0.15, 1) × 1.3; nút dev `drama` (high); mạch truyện (`StoryAction 'rumor'` → `dGossipSeeded` `1860`) | `applyRumor` → `book.record` |
 | `group_chat` 📱 | group · low (normal khi boost / sự kiện) · 4–9 | mood, relationship, memory · có | 3–5 người không sếp, HR chỉ vào 25% (`pickGroupMembers` `658`); `onPhone = true`; `minPeople 3` (`dGroup` `1932`) | tự phát online (w 1; w 3 + normal khi đang `boost`); lịch `lunch_plan` 35% / `end_of_day` 50% / `deadline`; hậu quả sự kiện (34 `GroupReason`, `scenes.ts:899-910`) | — |
-| `company_chat` 🏢 | company · low · 3–7 | mood, memory · không | sếp (bắt buộc, được `allowAbsent`) + 2–4 người ưu tiên ambition, HR +0.4 (`pickCompanyChat` `679`); `minPeople 3`; mỗi `reason` 1 lần/ngày qua `companyToday` (đánh dấu lúc `launch`, `1271`) | lịch `morning` 55% (08:35–09:20), `kpi_push/announce` 30% (14:00–16:00); tự phát w 0.3; sự kiện (15 `CompanyReason`, `scenes.ts:987-990`) | — |
+| `company_chat` 🏢 | company · low · 3–7 | mood, memory · không | sếp (bắt buộc, được `allowAbsent`) + 2–4 người ưu tiên ambition, HR +0.4 (`pickCompanyChat` `679`); `minPeople 3`; mỗi `reason` 1 lần/ngày qua `companyToday` (đánh dấu lúc `launch`, `1271`) | lịch `morning` 55% (08:35–09:20), `kpi_push/announce` 30% (14:00–16:00); tự phát w 0.3; sự kiện (16 `CompanyReason`, `scenes.ts:991-994`; v4 thêm `shopping` = thông báo vụ mua sắm, §11.2) | — |
 | `standup` 🗓️ | office · normal · 5–9 | kpi, mood, relationship, memory · không | ≥ 3 người `STANDUP_ROLES` rảnh, sếp dự 30%, techlead đứng đầu, chỗ `meeting` optional; `variant 'pitch'` (mạch `pitch_contest`): cả công ty tối đa 5 + sếp 80% (`dStandup` `2005`) | lịch 09:30 cửa sổ 60 (`planDay` `688`) | — |
 | `lunch` 🍜 | office · normal · 5–9 | relationship, mood, memory, **rumor** · có | 3–4 người (`pickFriendsGroup`, ưu tiên người đang `lunch` nếu ≥ 3); 45% kèm tin đồn mà trong nhóm có người đã nghe & có người chưa; `pantry_table` optional (`dLunch` `2035`) | lịch 12:05 cửa sổ 40 | `applyRumor`; tin len vào → `afterNews` |
 | `boss_catch` 😱 | office · high · 3–6 | mood, kpi, relationship, memory · không | sếp `visit` nạn nhân; người thứ hai "vạ lây" `nearbySlacker` (hoạt động CATCHABLE, ≤ 5 ô, `scenes.ts:728`) (`dBossCatch` `2069`) | `onSlackerSpotted` → `handleSlacker` (§5.6): slot rảnh → ngay; bận → xếp high cửa sổ 20 phút game; không được → `catchFallback` | `afterCatch`: nạn nhân stress +6, vạ lây `caughtToday++` |
@@ -98,12 +98,14 @@ Nguồn sự thật: `SCENE_DEFS` (`scenes.ts:88-211`), mỗi `SceneDef` (`scene
 | `raise_request` 💵 | office · normal · 4–8 | **verdict**, mood, relationship, memory · không | sếp `seat` (phải có mặt) + nhân viên `boss_visit` (`dRaiseRequest` `3441`) | sáng 50% khi KPI cao & tham vọng; mạch `raise_request` (`raise_check`) — §9.10 | `afterRaise` |
 | `promotion` 🎖️ | office · high · 4–8 | mood, relationship, memory · không | sếp `seat` nếu có mặt + HR + người được thăng `boss_visit` + 60% bạn thân nhất (optional) (`dPromotion` `3460`) | quyết định `promote` (10–40 phút sau); hoãn được | `afterPromotion` |
 | `layoff` 📉 | office · high · 5–9 | memory, relationship · không | như firing (`dLayoff` `3488`) | quyết định `layoff` (10–30 phút sau); hoãn được | `afterLayoff` → `depart(emp, 'laid_off')` |
+| `crisis_meeting` 🧯 (v5) | office · high · 6–10 | **verdict** (mã phương án `plan_a..plan_d`), mood, relationship, memory · không | chủ trì = sếp (có mặt, không đi vắng) hoặc HR; + ≤ 3 người theo `meeting.roles` của tình huống (trừ người trong cuộc); + người trong cuộc nếu `withCenter`; tất cả `meeting` (`dCrisisMeeting`) | **chỉ** từ bước 2 của mạch tình huống công ty (`StoryAction scene`, cửa sổ 150) — §16 | `afterCrisisMeeting`: ghi phương án vào mạch, dòng 🧯 "… chốt: …", hiệu ứng `now` |
+| `pep_talk` 📣 (v5) | office · normal · 5–9 | **verdict** (`inspired`/`unmoved`), mood, relationship, memory · không | người nói = sếp (vắng thì HR; biến thể hoà giải: HR trước) + cả phòng ≤ 4 người buồn nhất / 1 người / hai phe; `meeting`, riêng nói 1:1 với sếp thì phòng Giám đốc (`dPepTalk`) | **chỉ** từ bước 3 của mạch tình huống khi phương án là `pep_all` / `pep_one` / `mediate` — §16.5 | `afterPepTalk`: ghi kết quả vào mạch; cả phòng "không xuôi" → 60% nhóm kín chế lại bài nói |
 
 Quy tắc chung áp cho mọi dòng trong bảng:
 
-- **AI hay offline?** Không cố định theo loại cảnh mà theo kết quả `brain.reserve(prio)` (§4). Cảnh `high` luôn có thoại (ít nhất offline); `normal/low` có thể bị bỏ (`null`). Riêng `hr_review`: khi thoại là offline, **quyết định** lấy từ `offlineDecisions()` của `hr.ts`, không phải từ bộ thoại offline (§9.6). Cảnh có `verdict` mà AI không chốt: `sanitize.ts:36-40` đặt mặc định (`interview → hired`, `resign_talk → stay`, `raise_request → denied`), còn Director có lớp xác suất riêng khi `verdict` null (§9.10).
+- **AI hay offline?** Không cố định theo loại cảnh mà theo kết quả `brain.reserve(prio)` (§4). Cảnh `high` luôn có thoại (ít nhất offline); `normal/low` có thể bị bỏ (`null`). Riêng `hr_review`: khi thoại là offline, **quyết định** lấy từ `offlineDecisions()` của `hr.ts`, không phải từ bộ thoại offline (§9.6). Cảnh có `verdict` mà AI không chốt: `VERDICT_BY_TYPE` (`sanitize.ts`) đặt mặc định (`interview → hired`, `resign_talk → stay`, `raise_request → denied`), còn Director có lớp xác suất riêng khi `verdict` null (§9.10). v5: `crisis_meeting` / `pep_talk` có mặc định **null** — Director dùng lựa chọn dự phòng đã chọn sẵn lúc dựng cảnh (`meta.pick`), nhờ vậy phân biệt được "AI chốt" với "AI trả rác" (§16.4–16.5).
 - `minPeople` mặc định 3 cho kênh `group`, 2 cho các kênh khác (`launch` `1202`); người có `Placement.optional` không giữ được chỗ thì bị loại khỏi cảnh, không huỷ cảnh.
-- `VERDICT_SCENES = ['interview','resign_talk','raise_request']` (`scenes.ts:214`).
+- `VERDICT_SCENES = ['interview','resign_talk','raise_request','crisis_meeting','pep_talk']` (`scenes.ts`).
 - Nhóm vai dùng để chọn người: `STANDUP_ROLES` (techlead, senior, junior, qa, designer), `DEV_ROLES` (không designer), `TECH_ROLES` (= STANDUP_ROLES), `BIZ_ROLES` (saleslead, salesnew, marketing), `isStaff` = không sếp/HR (`scenes.ts:221-227`).
 
 ### 3.1 Cách viết "tình huống" cho prompt (`sit*`)
@@ -112,7 +114,7 @@ Quy tắc chung áp cho mọi dòng trong bảng:
 
 Các mô tả trạng thái dùng chung: `actPhrase(activity, label)` (`253`, ưu tiên nhãn World đặt như "đang lướt TikTok"), `bodyWord(a)` (`267`: "mệt lả" energy < 25, "hơi đuối" < 42, "stress sắp nổ tung" > 78, "đang căng thẳng" > 60, "tâm trạng rất tệ" mood < 30, "hơi cáu" < 45, "đang vui phơi phới" > 82), `pairDynamic(a, b)` (`304`: kỳ phùng ≤ −15 cả hai; bạn thân ≥ 35 cả hai; ngưỡng mộ một chiều ≥ 28 vs < 15; khó chịu ≤ −15 một chiều; khá thân ≥ 20 cả hai), `mutual(a, b) = min(rel a→b, rel b→a)` (`299`), `timeFlavor`, `projectBrief`, `deadlineDaysLeft`, `bossWhere → 'present'|'away'|'out'` (`359`).
 
-Phía AI, mỗi `SceneType` còn có một dòng "định hướng" riêng trong `SCENE_DIRECTION` (`src/ai/prompts.ts:109-135`) và bộ thoại offline có một builder riêng trong `BUILDERS` (`src/ai/offline.ts:4558`). Ba nơi này cộng lại mới thành "giọng" của một loại cảnh (xem §14).
+Phía AI, mỗi `SceneType` còn có một dòng "định hướng" riêng trong `SCENE_DIRECTION` (`src/ai/prompts.ts:109-135`) và bộ thoại offline có một builder riêng trong `BUILDERS` (`src/ai/offline.ts:4558`). Ba nơi này cộng lại mới thành "giọng" của một loại cảnh (xem §15).
 
 ### 3.2 `boss_call`: ai bị gọi lên phòng sếp, vì lý do gì (`dBossCall` `2090-2142`)
 
@@ -175,6 +177,7 @@ Vì sao hỏi `reserve` ở mức `low` cho tám chuyện nhưng `high` cho HR: 
 | `interview` | 09:45 | 240 | high | mỗi vacancy, **chỉ khi `!inSlump()`** (§9.9) |
 | `hr_review` | 10:25–10:40 | 150 | high | `day % hrReviewEveryDays === 0 && day ≥ 2`, chưa có trong hàng đợi, chưa họp hôm nay |
 | `news_chat` | 09:05–10:00 rồi +75–110 phút tới 17:00, né 11:55–13:10 | 40 | normal | `newsEnabled` |
+| timer `theme` (v4, "vụ mua sắm") | 09:20–14:00 | — | — | 50%, chưa có vụ, chưa có vụ trong ngày (§11.2) |
 | timer `personal` | 08:20–09:20 | — | — | 35% (`personalEvent` `3858`: chọn từ `PERSONAL_EVENTS`, `catalog.ts:354`, theo trọng số và vai; log + adjust + memory) |
 | Showrunner | lịch lên beat đầu ngày 09:10–09:50 | — | — | nếu `nextPlan` nằm ngoài hôm nay |
 | `resign_talk` / `raise_request` | xem §9.10 | | | `planStoryScenes(day, at)` |
@@ -242,7 +245,7 @@ World phát hiện (`world.ts:2268-2290`): sếp có mặt, không trong cảnh,
 |---|---|
 | `server_down` | đang sập → toast nếu nút dev; `setIncident`, timer clear 30–60 phút, dev stress +15, boost 60, 40% `company_chat` `incident`, `incident` high cửa sổ 45 |
 | `wifi_down` | chỉ khi không có sự cố khác; clear 20–40 phút; `group_chat` normal; boost 40 |
-| `payday` | mood +15 toàn công ty, `productBoostUntil = now + 120`, boost 120, `company_chat` + `group_chat`, 45% `celebration` |
+| `payday` | mood +15 toàn công ty, `productBoostUntil = now + 120` (nhắc sản phẩm 80 % thay vì 50 %, thêm tag `qua-tang, du-lich, thoi-trang`), boost 120, `company_chat` + `group_chat`, 45% `celebration` |
 | `birthday` | ưu tiên người chưa có sinh nhật; 50% `group_chat` loại nhân vật chính; `celebration` sau 6–15 phút |
 | `deal` | nút dev không kèm người → Director tự `addRevenue(10–80)` + kpi +40 + log; deal thật của World (`closeDeal`) thì chỉ `pushDayEvent` (World đã log); 35% celebration / 50% company_chat; saleslead chốt → 45% `desk_visit` `sales_promise` tới techlead |
 | `drama` | có tin đã lộ → `confront` high; không thì đánh dấu lộ 1 tin ≥ 2 người nghe; không có tin → `gossip` high |
@@ -251,7 +254,7 @@ World phát hiện (`world.ts:2268-2290`): sếp có mặt, không trong cảnh,
 | `news` | nút dev: xoá mọi `news_chat` chờ, xếp ngay high `force: '1'` |
 | `showrunner` | nút dev: `planBeats(true)` nếu < 2 mạch mở, không thì toast |
 
-`clearIncident(kind?)` (`2440-2457`, chạy từ timer `clear_incident`): bỏ qua nếu không còn sự cố hoặc sự cố hiện tại khác `kind`; `setIncident(null)`; hết `server_down` → log ✅ "Server đã chạy lại, cả team thở phào" (notable) và trả mọi người đang `server_fix` (active, không trong cảnh) về `idle` + nhả chỗ (`safeRelease`); hết `wifi_down` → log 📶 (không notable); xoá `boost` nếu đang là `server_down`/`wifi_down`. Đối chiếu `afterIncident` (`2837`): sau cảnh `incident` ai còn rảnh được đặt `server_fix` với thời lượng = thời gian còn lại của timer (kẹp 5–60 phút), nên `clearIncident` là nơi duy nhất giải phóng họ **sớm** khi sự cố hết trước hạn.
+`clearIncident(kind?)` (`2538-2556`, chạy từ timer `clear_incident`): bỏ qua nếu không còn sự cố hoặc sự cố hiện tại khác `kind`; `setIncident(null)`; hết `server_down` → log ✅ "Server đã chạy lại, cả team thở phào" (notable), 60 % mở vụ `backup_scare` nếu chưa có vụ (§11.2) và trả mọi người đang `server_fix` (active, không trong cảnh) về `idle` + nhả chỗ (`safeRelease`); hết `wifi_down` → log 📶 (không notable); xoá `boost` nếu đang là `server_down`/`wifi_down`. Đối chiếu `afterIncident` (`2837`): sau cảnh `incident` ai còn rảnh được đặt `server_fix` với thời lượng = thời gian còn lại của timer (kẹp 5–60 phút), nên `clearIncident` là nơi duy nhất giải phóng họ **sớm** khi sự cố hết trước hạn.
 
 `onBossLeft` (`523`): log 🏌️, `setBoost('boss_left', 120)`, `group_chat` `boss_left` normal. `onBossReturned` (`534`): log 🚪, cộng `bossAwayMin`, xoá boost/group_chat `boss_left` còn chờ, 50% `group_chat` `boss_back`, 35% `boss_call`.
 
@@ -261,8 +264,8 @@ World phát hiện (`world.ts:2268-2290`): sếp có mặt, không trong cảnh,
 
 Hai móc này **huỷ mọi cảnh đang diễn** ở cả hai slot trước khi làm việc khác: `abort(s, 'sang ngày mới')` (`470`) và `abort(s, 'hết ngày')` (`480`). Đây là một nguồn "cảnh bị gián đoạn" hay gặp khi debug (summary `"<title>: bị gián đoạn"`, §6.3; `counters.aborted++`) và là lý do cảnh HR dở được xếp lại qua `onAbortHook` (§9.7).
 
-- `onDayStart(day)` (`468-475`): abort → `planDay(d)` (§5.1) → `applyDayStartStory(d)` (§10.6). **Không** được gọi sau `world.load()` (§13).
-- `onDayEnd(day, results)` (`477-495`): abort → `worked = daySawPresence || có KPI > 0` → `endOfDayHr(d)` (§9.10) → `makeRecap(d, list)` (§12, một lần/ngày qua `lastRecapDay`) → **dọn hàng đợi của ngày cũ** (`489-493`): chỉ giữ mục có `at ≥ 00:00 mai` **hoặc** `until ≥ 00:00 mai`; mục còn lại đi qua `deferDecisionScene(q, 'hết ngày mà chưa diễn được')` — hàm này chỉ nhận `firing/layoff/promotion` (`DEFERRABLE_TYPES`) có `targetId`, **mọi loại khác trả `false` và mất lặng lẽ** (không log), kể cả `hr_warning`, `resign_talk`, `raise_request`, `interview` chưa diễn; timer chỉ giữ mục `at ≥ mai` hoặc `kind === 'clear_incident'`.
+- `onDayStart(day)` (`468-475`): abort → `planDay(d)` (§5.1) → `applyDayStartStory(d)` (§10.6). **Không** được gọi sau `world.load()` (§14).
+- `onDayEnd(day, results)` (`477-495`): abort → `worked = daySawPresence || có KPI > 0` → `endOfDayHr(d)` (§9.10) → `makeRecap(d, list)` (§13, một lần/ngày qua `lastRecapDay`) → **dọn hàng đợi của ngày cũ** (`489-493`): chỉ giữ mục có `at ≥ 00:00 mai` **hoặc** `until ≥ 00:00 mai`; mục còn lại đi qua `deferDecisionScene(q, 'hết ngày mà chưa diễn được')` — hàm này chỉ nhận `firing/layoff/promotion` (`DEFERRABLE_TYPES`) có `targetId`, **mọi loại khác trả `false` và mất lặng lẽ** (không log), kể cả `hr_warning`, `resign_talk`, `raise_request`, `interview` chưa diễn; timer chỉ giữ mục `at ≥ mai` hoặc `kind === 'clear_incident'` — **trừ giao hàng**: timer `delivery` còn trong hôm nay được dời sang 09:30–11:00 mai (`tries + 1` chỉ khi hôm đó có người đi làm; quá 2 lần hoặc đơn đặt quá 5 ngày thì huỷ, §11.5).
 
 Bẫy: `onAbortHook` **không xếp lại gì sau 16:40** (`w.minuteOfDay() >= 1000`, `2649`) và `deferDecisionScene` chỉ xử lý **mục trong hàng đợi**, nên một cảnh `firing`/`layoff`/`promotion`/`hr_warning`/`resign_talk`/`raise_request` đang **diễn dở** đúng lúc `onDayEnd` bị huỷ mà không được xếp lại — người xem thấy "<title>: bị gián đoạn" rồi hết; `lastFireDay`/`lastPromotionDay` chưa ghi nên không ăn cap, nhưng quyết định coi như mất (hiếm vì cảnh ≤ 3 phút thật; cần kiểm tra, xem câu hỏi mở 19). Muốn một mục hàng đợi "sống qua đêm" thì `until` phải ≥ 00:00 mai hoặc loại cảnh phải thuộc `DEFERRABLE_TYPES`.
 
@@ -307,23 +310,23 @@ Lưới an toàn hai lớp: `sweep()` mỗi 10 s dọn agent có `sceneId` khôn
 
 ### 6.6 `applyEffects(s, res)` (`1593-1649`) — kẹp biên
 
-Chỉ các `allowedEffects`. `relationship`: gộp theo cặp, kẹp ±15, `to` phải là participant hoặc `aboutId`; ai bị trừ tổng ≤ −6 trong một cảnh → `drift temper +0.01`. `mood` ±15, `kpi` ±25, `memory` ≤ 2/người, ≤ 120 ký tự. `rumor` → `applyRumor` (§11). Hiệu ứng của AI luôn là "gợi ý", code mới là người đặt trần.
+Chỉ các `allowedEffects`. `relationship`: gộp theo cặp, kẹp ±15, `to` phải là participant hoặc `aboutId`; ai bị trừ tổng ≤ −6 trong một cảnh → `drift temper +0.01`. `mood` ±15, `kpi` ±25, `memory` ≤ 2/người, ≤ 120 ký tự. `rumor` → `applyRumor` (§12). Hiệu ứng của AI luôn là "gợi ý", code mới là người đặt trần.
 
 ---
 
 ## 7. Nhắc sản phẩm (affiliate) & `showroom_chat`
 
-### 7.1 Nhịp nhắc sản phẩm trong cảnh thường — `offerProduct` (`3873-3886`)
+### 7.1 Nhịp nhắc sản phẩm trong cảnh thường — `offerProduct` (`3976-3985`)
 
-Điều kiện lần lượt: loại cảnh có `SCENE_DEFS[type].product` **hoặc** `desk_visit` với initiator là marketing; không đang có cảnh khác giữ sản phẩm (`productLock`); cách `lastProductAt ≥ PRODUCT_MENTION_MIN_MINUTES` phút thật (mặc định 8, `productMinMs`); xác suất 50% (85% trong `productBoostUntil` = 120 phút game sau payday); rồi `pickProduct(productTags, Set(recentProducts))`. `productTags` (`3888-3906`) suy từ tình trạng: energy < 40 → `ca-phe, nang-luong, do-uong`; stress > 65 → `thu-gian, massage, suc-khoe`; có tech → `dev, ban-phim, chuot, tai-nghe, man-hinh, cong-nghe`; lunch → `an-vat, hop-com, do-an, an-trua`; marketing → `lam-dep, thoi-trang, livestream, tiktok, content`; celebration → `qua-tang, tiec, karaoke`; sếp → `golf, sep`; 11:30–14:00 hoặc energy < 30 → `ngu-trua`; v.v. Khởi động: `lastProductAt` được đặt để nhịp đầu chỉ chờ `PRODUCT_WARMUP_MS` 2 phút (`417`).
+Điều kiện lần lượt: loại cảnh có `SCENE_DEFS[type].product` **hoặc** `desk_visit` với initiator là marketing; không đang có cảnh khác giữ sản phẩm (`productLock`); cách `lastProductAt ≥ PRODUCT_MENTION_MIN_MINUTES` phút thật (mặc định 8, `productMinMs`); xác suất 50% (80% khi đang boost: `productBoostUntil` — 120 phút game sau payday — hoặc có "vụ mua sắm" đang chạy); rồi **v4** `chooseProduct(people, productTags, vụ)` — chỉ chọn món **có cớ** (khớp ngữ cảnh, hợp vụ, hoặc có người trong cảnh đã sở hữu), không có thì cảnh không nhắc sản phẩm; kèm "kiểu chuyện" cho AI. Chi tiết chọn món, kiểu chuyện, hàng về / khui hộp ở **§11**. `productTags` (`4213`) suy tag ngữ cảnh từ tình trạng người trong cảnh, giờ trong ngày, loại cảnh (danh sách đầy đủ ở §11.3). Khởi động: `lastProductAt` được đặt để nhịp đầu chỉ chờ `PRODUCT_WARMUP_MS` 2 phút (`417`).
 
-Prompt render `req.product` với `preferSpeaker` (`prompts.ts:494`); cảnh phải có đúng 1 câu `product: true`, không nói giá/link — chip link do client vẽ từ `LogEntry.product` (xem [08-frontend-giao-dien.md](08-frontend-giao-dien.md)); đường `/go/:id` ở [02-kien-truc-va-giao-thuc.md](02-kien-truc-va-giao-thuc.md).
+Director gửi `req.product` gồm tên, `pitch`, `preferSpeaker` và (v4) `short`, `facts`, `avoid`, `angle`, `hook`, `mode`, `priceFeel` (`director.ts:1317-1330`); prompt dựng khối sản phẩm theo `mode` ([05-lop-ai.md](05-lop-ai.md) §6.3); cảnh phải có đúng 1 câu `product: true`, không nói giá/link (câu có con số giá bị `sanitize` bỏ) — chip link do client vẽ từ `LogEntry.product` (xem [08-frontend-giao-dien.md](08-frontend-giao-dien.md)); đường `/go/:id` ở [02-kien-truc-va-giao-thuc.md](02-kien-truc-va-giao-thuc.md).
 
 ### 7.2 `showroom_chat` (v2, thiết kế gốc `docs/v2-contract.md` §3)
 
 - Cap riêng: `showroomReady()` = `clockMs − lastShowroomAt ≥ SHOWROOM_SCENE_MIN_MINUTES` phút thật (mặc định 30). **Đọc thẳng `process.env`** (`showroomMinMs` `65-69`), không qua `CONFIG` như các khoá khác — test truyền config giả không ghi đè được.
-- Sản phẩm `showroomProduct(shelf)` (`1739`): `pickShelfProduct(kệ đang đứng)` → kệ kia → `pickProduct(['van-phong'])` → bất kỳ; né `recentProducts`. Không có sản phẩm nào → không dựng cảnh.
-- `dShowroom` (`1750`): người khoe `pickRecommender` (`scenes.ts`: marketing +1.6, nữ↔beauty +0.6, tech↔tech +0.6, sếp ×0.4) đứng đầu `participants`, `productSpeaker = rec.id`, `productPitch = note || pitch` (nhận xét chủ dự án trong `data/products.json` làm chất liệu), `labels` "đang khoe đồ trên kệ", `topicCats: []`.
+- Sản phẩm (v4) `showroomOffer(shelf, people, rec)` (`1818`): món của kệ đang đứng (kệ trống → cả danh mục), né `recentProducts`. 60 % nếu trong nhóm có người **đã sở hữu** một món của kệ → **người đó luôn là người kể** (`speakerId` = người có món, kiểu chuyện `owner`, §11.4); không thì bốc có trọng số `3 × điểm hợp vụ (nếu đang có vụ) + 1 / (1 + 0,5 × số lần đã nhắc)` → `makeOffer(..., mode 'showroom')` — người khoe lỡ đã có đúng món vừa bốc thì truyền `owner` = người khoe (chỉ kiểu chuyện `owner`/`any`, không lấy vụ làm cớ) để không có prompt "MÓN ĐỒ … ĐÃ CÓ" đi kèm chuyện "chưa mua, đang tính rinh về" (rà soát vòng 3). Không có sản phẩm nào → không dựng cảnh.
+- `dShowroom` (`1844`): người khoe = `offer.speaker` nếu có, không thì `pickRecommender` (`scenes.ts`: marketing +1.6, nữ↔beauty +0.6, tech↔tech +0.6, sếp ×0.4), đứng đầu `participants`; `productMode = owns(người khoe, món) ? 'owner' : 'showroom'`, `productAngle/Hook/AngleKey/Buys` từ offer (pitch = `pitch` của món); tình huống `sitShowroom` có thêm dòng "Chuyện quanh món này: …" (`scenes.ts:1456`); kệ gọi là "kệ làm đẹp & thời trang" / "kệ công nghệ & nhà cửa" (`SHELF_LABEL`); `labels` "đang khoe đồ trên kệ", `topicCats: []`.
 - Lịch `nudge` (`dShowroomQueued` `1775`): có nhóm đứng đó → diễn; đang `nudge` → chờ tới `until` hoặc tới khi không ai còn `activity 'showroom'`; chưa có → `sendToShowroom()` (`1797`): marketing 80% làm đầu tàu, nhóm 2–3 người thân (`pickFriendsGroup`), giữ chỗ `showroom_<kệ ưa thích>` rồi kệ kia, `setActivity('showroom', max(8–12 phút game, ~10 s thật))`, chờ `max(14 phút game, ~15 s thật)` — hai mốc "thật" đổi sang phút game bằng `realSecToGameMin` vì khi tua x10, 14 phút game chỉ còn 2,8 s, chưa đủ đi từ bàn qua kệ (chú thích `1821-1838`).
 - Showroom **bỏ qua** nhịp `offerProduct` nhưng khi dòng `product` được phát vẫn cập nhật `lastProductAt`/`recentProducts` (nên cảnh thường ngay sau đó sẽ không nhắc sản phẩm thêm).
 
@@ -490,29 +493,29 @@ Ba ngưỡng khác nhau cùng dùng trường `retries`: hoãn qua ngày `≤ 2`
 
 ### 10.1 Beat, mạch, hành động
 
-- Thực đơn `BEAT_MENU` (17 loại, `src/content/catalog.ts:308-326`; `BEAT_KINDS` `328`): `conflict, viral, big_bug, client_angry, secret_friendship, crush_rumor, raise_request, resign_threat, boss_mood_swing, team_building, new_client_deal, overtime_week, office_prank, lost_item, sick_day, karaoke_night, pitch_contest`. `BEAT_CAST` (`story.ts:82-100`) ghi mỗi loại cần ai (`none | a | ab`), vai nào hợp (trọng số, không bắt buộc) và số bước (`steps` 1..3). Ví dụ `big_bug`: a = qa ×4, b = dev không qa (junior +0.6), 3 bước; `raise_request`: a có avg7 ≥ 1.1 → 2 + ambition, 1 bước; `resign_threat`: a mood < 35 → 2.5, warned +0.6, 2 bước.
-- `Arc` (`21-36`): `id 'arc<day>_<seq>', kind, a?, b?, intensity 1..3, note, status started|escalated|resolved|dropped, createdDay, createdAt, step, total, nextAt, source`. Hằng: `MAX_OPEN_ARCS 2`, `MAX_ARCS_KEPT 8`, `MAX_RECENT_BEATS 10`, `ARC_MAX_AGE_DAYS 2`, `STORY_HOURS 08:30–17:20` (`69-75`).
-- `StoryAction` (`39-55`), 16 loại: `scene` (type, delay, window, prio, data), `event` (deal/server_down/release), `adjust`, `rel`, `memory`, `log`, `toast`, `leave_early`, `overtime`, `late_tomorrow`, `strict_boss`, `revenue`, `resign_check`, `raise_check`, `rumor`, `boost`.
+- Thực đơn `BEAT_MENU` (**28 loại**, `src/content/catalog.ts` `BEAT_MENU`; `BEAT_KINDS`): `conflict, viral, big_bug, client_angry, secret_friendship, crush_rumor, raise_request, resign_threat, boss_mood_swing, team_building, new_client_deal, overtime_week, office_prank, lost_item, sick_day, karaoke_night, pitch_contest` + **v4 `shopping_story`** (§11.6) + **v5: 10 tình huống công ty** sinh từ `SITUATIONS` (`cash_crunch, market_slump, pr_crisis, good_press, personal_trouble, faction_split, pushback, morale_talk, poaching, investor_visit` — §16). `BEAT_CAST` (`story.ts`) ghi mỗi loại cần ai (`none | a | ab`), vai nào hợp (trọng số, không bắt buộc) và số bước (`steps` 1..`MAX_ARC_STEPS` = 4; tình huống luôn 4, mục sinh tự động từ `cast/castA/castB` của `SITUATIONS`). Ví dụ `big_bug`: a = qa ×4, b = dev không qa (junior +0.6), 3 bước; `raise_request`: a có avg7 ≥ 1.1 → 2 + ambition, 1 bước; `resign_threat`: a mood < 35 → 2.5, warned +0.6, 2 bước.
+- `Arc` (`story.ts` `interface Arc`): `id 'arc<day>_<seq>', kind, a?, b?, intensity 1..3, note, status started|escalated|resolved|dropped, createdDay, createdAt, step, total, nextAt, source` + v4 `productId?` + **v5** `plan?` (`plan_a..plan_d`), `planBy?` (`llm`/`offline`), `pep?` (`inspired`/`unmoved`), `sideA?/sideB?` (hai phe), `waited?` (phút đã chờ cuộc họp), `outcome?` (`good`/`bad`). Hằng: `MAX_OPEN_ARCS 2`, `MAX_ARC_STEPS 4` (v5), `MAX_ARCS_KEPT 8`, `MAX_RECENT_BEATS 10`, `ARC_MAX_AGE_DAYS 2`, `STORY_HOURS 08:30–17:20`.
+- `StoryAction` (`story.ts` `type StoryAction`), **19 loại** (v4 thêm `own`: ghi người a đã có món + đặt làm đồ trên bàn, §11.6; v5 thêm `wait` và `hr_review`, §16.3): `scene` (type, delay, window, prio, data), `event` (deal/server_down/release), `adjust`, `rel`, `memory`, `log`, `toast`, `leave_early`, `overtime`, `late_tomorrow`, `strict_boss`, `revenue`, `resign_check`, `raise_check`, `rumor`, `boost`, `own`, `wait` (bước chưa chạy được → hoãn `minutes`, không tính bước), `hr_review` (xếp họp xét nhân sự kèm `note`).
 
 ### 10.2 Lịch và yêu cầu
 
 - `due(now, minute)` (`119`): trong `STORY_HOURS`, `now ≥ nextPlanAt`, `openArcs < 2`. `schedule(now, delay?)` (`126`): `nextPlanAt = now + (delay ?? everyMin × rand(0.85, 1.2))`. `everyMin` = `SHOWRUNNER_EVERY_GAME_MINUTES` (config sàn 30 ở `config.ts:312`; Director đặt sàn 20 ở `director.ts:427` — config thắng nên thực tế ≥ 30).
-- `buildRequest(c)` (`147-189`): `situation` ≤ 900 ký tự (ngày/giờ/số người, doanh thu x/y (pct), `projectBrief`, sự cố, sếp có mặt, KPI tuần dẫn đầu 2 / đuối 2 kèm lowStreak & warnings, ≤ 3 cặp |mutual| ≥ 18, ≤ 2 người mood < 35, tin đồn mới nhất ≤ 90 ký tự, tin thời sự vừa bàn ≤ 80, 2 sự kiện gần nhất); `menu` = `BEAT_MENU` trừ kind đang mở; `openArcs` mô tả 1 dòng/mạch; `recentBeats`; `roster` active.
+- `buildRequest(c)` (`147-189`): `situation` ≤ 900 ký tự (ngày/giờ/số người, doanh thu x/y (pct), `projectBrief`, sự cố, sếp có mặt, KPI tuần dẫn đầu 2 / đuối 2 kèm lowStreak & warnings, ≤ 3 cặp |mutual| ≥ 18, ≤ 2 người mood < 35, tin đồn mới nhất ≤ 90 ký tự, tin thời sự vừa bàn ≤ 80, 2 sự kiện gần nhất); `menu` = `BEAT_MENU` trừ kind đang mở **và** (v5) chỉ giữ ≤ 3 loại tình huống công ty do `situationMenu(w)` bốc theo trọng số tình hình (không bốc loại có trong 6 beat gần nhất; đang có tình huống mở → không đưa loại nào) — tiết kiệm token, xem §16.7; `openArcs` mô tả 1 dòng/mạch (v5: kèm "đã chốt: <phương án>" nếu mạch tình huống đã họp xong, để AI biên kịch viết tiếp cho khớp); `recentBeats`; `roster` active.
 - Phía Director, `storyTick()` (`3614`): tắt nếu `!showrunnerEnabled` hoặc < 3 người có mặt; khoá `planning` tự mở sau 40 s; `story.due` → `planBeats(false)`; `dueArcs` → `runArcStep`. `planBeats(force)` (`3626`): gọi `story.schedule(now)` **trước** để không lên hai lần; dùng LLM khi `brain.mode() === 'llm'` và (`force` hoặc không `llmGated`), ngược lại `offlinePlan`; kết quả AI về sau khi đã qua ngày → bỏ.
 
 ### 10.3 Nhận kế hoạch và kế hoạch offline
 
-- `accept(plan, c)` (`199-231`): ≤ 3 beat; `source` = 'llm' chỉ khi `plan.source === 'llm'`; mỗi beat qua `cleanBeat` (`234`: kind ∈ `BEAT_KINDS`; `a/b` phải active, present, không hidden, không sếp/HR — sai hoặc thiếu thì **tự chọn** bằng `weightedPick` theo `BEAT_CAST`; need `'none'` thì xoá a/b; intensity kẹp 1..3; note ≤ 160, rỗng → `defaultNote`); bỏ kind đang mở; mạch mới `nextAt = now + rand(4, 25)`.
-- `acceptPlan` phía Director (`3661`): dòng 🎬 (`kind:'system'`) **chỉ** cho mạch intensity 3, ≤ 1 mỗi lần lên beat, ≤ 2/ngày (`clapsToday`) — đọc như tiêu đề chương, không như kỹ thuật; archive kind `beat` mỗi mạch.
-- `offlinePlan(c)` (`289-339`): cần ≥ 2 nhân viên; trọng số theo tình hình (`conflict` 1.0 + 1.0 nếu có cặp mutual ≤ −15; `big_bug` 0.8 + 0.8 khi deadline ≤ 2; `client_angry` 0.7 + 0.6 khi doanh thu < 0.7; `raise_request` 1.2 khi có "sao" (avg ≥ 1.1 & ambition ≥ 0.6), 0.15 không; `resign_threat` 1.3 khi có người mood < 35, 0.2 không; `boss_mood_swing` chỉ khi sếp có mặt; `karaoke_night` +0.5 sau 14:00; `pitch_contest` 0.3 khi ≥ 4 người…); không lặp 6 beat gần nhất; 1 beat (30% là 2); intensity 1 (50%) / 2 (35%) / 3 (15%).
+- `accept(plan, c)` (`199-231`): ≤ 3 beat; `source` = 'llm' chỉ khi `plan.source === 'llm'`; mỗi beat qua `cleanBeat` (`234`: kind ∈ `BEAT_KINDS`; `a/b` phải active, present, không hidden, không sếp/HR — sai hoặc thiếu thì **tự chọn** bằng `weightedPick` theo `BEAT_CAST`; need `'none'` thì xoá a/b; intensity kẹp 1..3; note ≤ 160, rỗng → `defaultNote`); bỏ kind đang mở; **v5: bỏ tình huống công ty thứ hai khi đã có một tình huống mở**; `total = clamp(steps, 1, MAX_ARC_STEPS)`; mạch mới `nextAt = now + rand(4, 25)`.
+- `acceptPlan` phía Director: dòng 🎬 (`kind:'system'`) **chỉ** cho mạch intensity 3, ≤ 1 mỗi lần lên beat, ≤ 2/ngày (`clapsToday`) — đọc như tiêu đề chương, không như kỹ thuật; **v5: không in cho tình huống công ty** (bước bùng phát đã có dòng sự kiện cùng nội dung); archive kind `beat` mỗi mạch.
+- `offlinePlan(c)` (`289-339`): cần ≥ 2 nhân viên; trọng số theo tình hình (`conflict` 1.0 + 1.0 nếu có cặp mutual ≤ −15; `big_bug` 0.8 + 0.8 khi deadline ≤ 2; `client_angry` 0.7 + 0.6 khi doanh thu < 0.7; `raise_request` 1.2 khi có "sao" (avg ≥ 1.1 & ambition ≥ 0.6), 0.15 không; `resign_threat` 1.3 khi có người mood < 35, 0.2 không; `boss_mood_swing` chỉ khi sếp có mặt; `karaoke_night` +0.5 sau 14:00; `pitch_contest` 0.3 khi ≥ 4 người…; v5: mỗi tình huống công ty lấy trọng số `def.weight(sitWorldOf(w))`, = 0 khi đã có tình huống mở, và đã bốc một tình huống thì các tình huống khác bị loại khỏi lượt bốc thứ hai — §16.2); không lặp 6 beat gần nhất; 1 beat (30% là 2); intensity 1 (50%) / 2 (35%) / 3 (15%).
 
-### 10.4 Thi hành bước (`actionsFor` `367-605`, `runArcStep` `3674`, `runAction` `3709`)
+### 10.4 Thi hành bước (`actionsFor`, `runArcStep`, `runAction`)
 
-`actionsFor(arc, c)` trả `null` nếu người liên quan không còn active (Director `drop` mạch). Bảng ánh xạ từng kind/bước đã được `SPEC.md` §5.8 liệt kê và khớp code; điểm đáng chú ý: `conflict` bước kết với intensity 3 có **40% không làm hoà** (`396`); `client_angry` bước kết 60% giữ khách (+8–30 triệu, kpi +20) / 40% mất khách; `boss_mood_swing` trả `null` nếu sếp vắng (`496`); `sick_day` trả `null` nếu a không có mặt (`572`); `overtime_week` trả `null` nếu không có dev; `karaoke_night` làm a + 3 người tới trễ 25–50 phút sáng mai (`late_tomorrow`).
+`actionsFor(arc, c)` trả `null` nếu người liên quan không còn active (Director `drop` mạch); v5: kind là tình huống công ty → chuyển hẳn sang `situationActions` (§16.3). Bảng ánh xạ từng kind/bước đã được `SPEC.md` §5.8 liệt kê và khớp code; điểm đáng chú ý: `conflict` bước kết với intensity 3 có **40% không làm hoà** (`396`); `client_angry` bước kết 60% giữ khách (+8–30 triệu, kpi +20) / 40% mất khách; `boss_mood_swing` trả `null` nếu sếp vắng (`496`); `sick_day` trả `null` nếu a không có mặt (`572`); `overtime_week` trả `null` nếu không có dev; `karaoke_night` làm a + 3 người tới trễ 25–50 phút **ngày văn phòng mở cửa kế tiếp** (`late_tomorrow`, §10.6).
 
-`runArcStep`: bước giữa có cổng xác suất **0.88** (không chạy vẫn `advance` để mạch không treo); bước kết luôn chạy; resolved → archive "kết". `runAction`: `scene` → `enqueue(type, now + delay, + window, prio, { …data, arcId })` — đi qua hàng đợi thường nên vẫn tôn trọng slot/cooldown/`reserve`; `event` → `handleEvent(auto = true)`; `leave_early` kẹp `leaveAt`; `overtime` → `applyOvertime` (leaveAt + minutes, tối đa 20:30, giữ qua `untilDay`); `late_tomorrow`; `strict_boss` → `bossStrictUntil`; `revenue`; `resign_check` (`3744`: `pTalk = clamp(0.15 + 0.25 warned + 0.25 ghét sếp ≤ −10 + 0.2 lowMood ≥ 1 + 0.15 mood < 50, 0.15, 0.85)`, cách ≥ 3 ngày → `resign_talk`; không thì HR ghé hỏi han + mood +5); `raise_check` (gate như `planStoryScenes` → `raise_request`; không thì ghé bàn HR "hỏi dò lương"); `rumor` → `gossip` seeded; `boost`.
+`runArcStep`: v5 — mạch tình huống có **cuộc họp / buổi truyền lửa của chính nó** (`crisis_meeting` / `pep_talk` có `arcId` trùng) còn chờ trong hàng đợi hoặc đang diễn (`arcSceneLive`) → `story.hold(arc, now, 10)` (lùi 10 phút, **không** cộng `waited`) rồi thôi: phương án dự phòng không "chốt nhanh" giữa lúc đang họp, kết cục không công bố trước bài truyền lửa (kể cả cảnh được xếp lại sau khởi động, §14); hàng đợi có `until` và được dọn cuối ngày nên không kẹt mãi. Có hành động `wait` → `story.postpone(arc, now, minutes)` rồi thôi (không `advance`); bước giữa có cổng xác suất **0.88** (không chạy vẫn `advance` để mạch không treo) — **trừ tình huống công ty** (họp và triển khai là xương sống, không được bỏ) và **bước có hành động `own`** (bước "vừa mua" của `shopping_story`: bước sau coi người đó là chủ món); bước kết luôn chạy; resolved → archive "kết". `runAction`: `scene` → `enqueue(type, now + delay, + window, prio, { …data, arcId })` — đi qua hàng đợi thường nên vẫn tôn trọng slot/cooldown/`reserve`; `event` → `handleEvent(auto = true)`; `leave_early` kẹp `leaveAt`; `overtime` → `applyOvertime` (leaveAt + minutes, tối đa 20:30, giữ qua `untilDay`); `late_tomorrow`; `strict_boss` → `bossStrictUntil`; `revenue`; `resign_check` (`3744`: `pTalk = clamp(0.15 + 0.25 warned + 0.25 ghét sếp ≤ −10 + 0.2 lowMood ≥ 1 + 0.15 mood < 50, 0.15, 0.85)`, cách ≥ 3 ngày → `resign_talk`; không thì HR ghé hỏi han + mood +5); `raise_check` (gate như `planStoryScenes` → `raise_request`; không thì ghé bàn HR "hỏi dò lương"); `rumor` → `gossip` seeded; `boost`; v5 `hr_review` → `enqueue('hr_review', now + 15–45, cửa sổ 180, 'high', { note, arcId })` nếu chưa có cuộc họp nào trong hàng đợi; `wait` không làm gì (đã xử lý ở `runArcStep`).
 
-`advance(arc, now, minute)` (`608`): `step++`; đủ `total` → resolved; không thì `escalated` từ bước 1; khoảng cách bước 1: 60–150 phút, bước 2: 90–200; rơi ngoài `STORY_HOURS.to` → sáng mai 09:30 + 0–90 phút. `expire(day)` (`349`): `day − createdDay ≥ 3` → dropped. `pruneArcs` xoá mạch đã kết/rơi cũ nhất khi > 8. `restore` không bao giờ giữ > 2 mạch mở (`686-692`).
+`advance(arc, now, minute)`: `step++`; đủ `total` → resolved; không thì `escalated` từ bước 1; khoảng cách bước 1: 60–150 phút, bước 2: 90–200 (v5 tình huống: 40–90 → 30–70 → 120–240); rơi ngoài `STORY_HOURS.to` → sáng mai 09:30 + 0–90 phút. `expire(day)` (`349`): `day − createdDay ≥ 3` → dropped. **Ngày văn phòng không ai làm không tính vào tuổi mạch** (rà soát 2026-11-03): `planDay` (trước `resetDay`, vì `resetDay` xoá `daySawPresence`) tính `idle = (ngày − plannedDay − 1) + (ngày vừa qua không ai có mặt ? 1 : 0)` rồi `story.holdAges(idle)` cộng `createdDay` **và lùi `nextAt` đúng `idle × 1440`** cho mọi mạch mở (bước kế giữ khung giờ đã hẹn thay vì dồn hết vào 08:30 sáng mở cửa; `idle` tính tối đa 5 ngày — nghỉ lâu hơn thì mạch vẫn già đi rồi tự rơi) — trước đây ở `TIME_MODE=realtime` một tình huống mở chiều thứ Sáu bị `expire` bỏ dở sáng thứ Hai sau khi đã có hậu quả (chế độ nén luôn có người nên `idle = 0`). `pruneArcs` xoá mạch đã kết/rơi cũ nhất khi > 8. `restore` không bao giờ giữ > 2 mạch mở (`686-692`).
 
 ### 10.5 Tính cách trôi
 
@@ -520,11 +523,122 @@ Ba ngưỡng khác nhau cùng dùng trường `retries`: hoãn qua ngày `≤ 2`
 
 ### 10.6 `applyDayStartStory(day)` (`3797-3817`)
 
-Tăng ca còn hiệu lực → `applyOvertime`; `lateTomorrow` → `arriveAt` (kẹp 07:00–10:30, chỉ người chưa tới); `driftPlans` mỗi sáng một nhịp; `story.expire`; `resolveProbations`. **Chỉ chạy từ `onDayStart`** — sau khi khôi phục từ file World không gọi `onDayStart` (xem §13), nên các việc này không chạy cho ngày đang dở.
+Tăng ca còn hiệu lực → `applyOvertime`; `lateTomorrow` → `arriveAt` (kẹp 07:00–10:30, chỉ người chưa tới) — **chỉ khi hôm nay văn phòng mở cửa** (`world.officeClosed?.()`, v5): karaoke tối thứ Sáu ở `TIME_MODE=realtime` làm thứ Hai đi trễ (khớp dòng "Hậu karaoke" của bước sau, cũng lùi sang thứ Hai nhờ `holdAges`), không "tiêu" vào thứ Bảy; `driftPlans` mỗi sáng một nhịp; `story.expire`; `resolveProbations`. **Chỉ chạy từ `onDayStart`** — sau khi khôi phục từ file World không gọi `onDayStart` (xem §14), nên các việc này không chạy cho ngày đang dở.
 
 ---
 
-## 11. Tin đồn (`RumorBook`, `src/sim/rumors.ts`)
+## 11. Chuyện mua sắm (v4, `src/content/shopping.ts` + phần sản phẩm của Director)
+
+Mục tiêu (chủ dự án, 2026-11-03): 26 món chính thức trên kệ phải được nhắc **tự nhiên, hài, có chuyện** — không chèn ngang kiểu quảng cáo. Mỗi lần một món xuất hiện phải có **cớ**: chuyện đang nói chạm đúng nhu cầu, một "vụ" do sếp / HR phát động, hoặc một người trong cảnh **đã có** món đó và kể lại. Không có cớ → không nhắc. Lời thoại vẫn do AI viết (hoặc câu mẫu offline); code chỉ chọn món, chọn "kiểu chuyện" và đặt luật. Không con số giá, không link, không bịa công dụng (§11.7).
+
+### 11.1 Dòng chảy
+
+```
+planDay ─(50 %/ngày)─► timer 'theme' ─► startTheme ─► log + company_chat 'shopping' + showroom_chat nudge ─► (hết giờ) endTheme ─► payoff (🏆 / 🎁)
+clearIncident(server_down) ─(60 %)─► startTheme('backup_scare')
+launch(d) ─► offerProduct ─► chooseProduct (cần cớ) ─► makeOffer (kiểu chuyện) ─► req.product {mode, angle, hook, facts, avoid, priceFeel}
+playLine(dòng product) ─► afterProductLine ─► productUses++ · recentAngles ─(xác suất buys)─► timer 'delivery' (+90–300 phút)
+timer 'delivery' ─► deliver ─► addOwned + setDeskItem + log 📦 ─► desk_visit tone 'unbox' (cảnh khui hộp, mode 'unboxing')
+AI biên kịch: beat shopping_story ─► 'own' + desk_visit 'mention' ─► (30–90 phút sau) desk_visit 'owner'
+showroom_chat ─► showroomOffer (ưu tiên người đã có món trên kệ đó → kể lại)
+```
+
+Kiểu riêng của vùng này (khai báo trong `director.ts:312-341`, không export): `Timer.kind` thêm `'theme' | 'theme_end' | 'delivery'` (kèm `themeKey`, `productId`, `tries`); `ProductOffer { product, angle, hook?, mode, speaker?, angleKey?, buys }`; `ThemeState { key, startedAt, until, announce }`; `ProductMode` = `SceneRequest.product.mode` (`'mention' | 'showroom' | 'unboxing' | 'gift' | 'owner'`). `Draft` có thêm `productAngle/productHook/productMode/productAngleKey/productBuys`, `Scene.offer`, `QData` thêm `productId/productMode/productAngle` (nằm trong `Q_STR_KEYS` để lưu được).
+
+### 11.2 "Vụ mua sắm" — `SHOPPING_THEMES` (`shopping.ts:42`)
+
+Một vụ = một phong trào kéo dài vài giờ game do một vai phát động (`by`: `boss` / `hr` / `marketing` — lấy tên người đang giữ vai; vai trống thì vụ đó không bốc được). Trong lúc có vụ: món có tag hợp vụ được ưu tiên, lời thoại lấy vụ làm cớ, xác suất nhắc sản phẩm tăng (§11.3).
+
+| key | Ai | Khi | Dài (phút game) | Trọng số | Kết |
+|---|---|---|---|---|---|
+| `secret_santa` 🎁 bốc thăm quà bí mật | hr | | 300–420 | 1.2 | `gift_exchange` |
+| `desk_contest` 🏆 thi góc làm việc đẹp nhất | boss | | 300–480 | 1.1 | `contest_winner` |
+| `healthy_week` 🥗 tuần lễ sống khoẻ, cấm trà sữa | hr | | 360–540 | 1 | |
+| `cleanup` 🧽 tổng vệ sinh | boss | sau 13:00 | 180–300 | 0.9 | |
+| `meeting_projector` 📽️ TV phòng họp chập chờn trước buổi demo | boss | | 180–300 | 0.8 | |
+| `company_party` 🥂 tiệc công ty, dress code thanh lịch | hr | | 360–540 | 1 | |
+| `ram_day` 🙏 mai là rằm, rủ đi chùa (lời lẽ tôn trọng) | hr | | 240–360 | 0.5 | |
+| `sale_quota` 🛒 marketing bị giao chỉ tiêu giới thiệu kệ (tự giễu) | marketing (cần cả sếp) | | 240–420 | 0.9 | |
+| `backup_scare` 💾 vừa sập server, ai cũng sợ mất dữ liệu | boss | chỉ sau `server_down` | 180–300 | **0** | |
+| `nap_policy` 😴 được ngủ trưa nhưng tự lo chăn gối | hr | | 300–480 | 0.9 | |
+| `heat_wave` ☀️ nắng chiều rọi màn hình | boss | sau 13:00 | 150–240 | 0.8 | |
+| `business_trip` 🧳 sắp đi công tác Đà Nẵng | boss | | 240–420 | 0.7 | |
+
+Mỗi vụ có `announce` (câu thông báo, `{boss}{hr}{mkt}` thay bằng tên qua `themeText` `director.ts:4044`), `hook` (cớ ngắn cho câu mẫu offline), `angle` (tiền đề cho AI), `tags` (`[]` = mọi món hợp). `when: 'friday'` đã có trong kiểu nhưng chưa vụ nào dùng.
+
+- **Lên lịch** (`planDay`): đầu tiên bỏ vụ cũ **đã quá hạn mà chưa kết** (`theme.until ≤ now` → `theme = null`: qua đêm, khôi phục, đổi chế độ giờ) — không chặn vụ hôm nay, không "khui quà" vào sáng hôm sau; ngày chưa có vụ (`day !== lastThemeDay`) → 50 % xếp timer `'theme'` lúc 09:20–14:00. Timer chạy trễ > 90 phút game (vd sau khởi động lại) thì bỏ.
+- **`startTheme(want?)`** (`4145`): đã có vụ → thôi. Không chỉ định → bốc có trọng số trong các vụ `weight > 0`, **né 4 vụ gần nhất** (`recentThemes` ≤ 6) và qua `themeOk` (`4134`): đúng giờ (`afternoon` ≥ 13:00), vai phát động có mặt trong công ty, ≥ 3 người không phải sếp **đang có mặt**. Bắt đầu: `until = min(now + rand(minutes), 16:40 hôm đó)` — kết khi còn người ở văn phòng để khui quà / trao giải (rà soát 2026-11-03: vụ 300–540 phút bắt đầu sau trưa từng kết lúc 18:00–23:00, phần "kết" mất hoặc sang sáng mai); còn < 60 phút tới 16:40 thì **không** bắt đầu (trả `false` trước mọi tác dụng phụ). Rồi `theme = {key, startedAt, until, announce}`, `lastThemeDay`, `productBoostUntil = until`, log sự kiện (notable), `company_chat` reason `'shopping'` (note = câu thông báo; `COMPANY_TEXT.shopping` ở `scenes.ts:1023`: nhân viên "dạ vâng" rôm rả, có người hỏi khéo "có được trừ vào lương không ạ"), một `showroom_chat` nudge 20–60 phút sau nếu có phòng trưng bày, timer `'theme_end'`.
+- **Sự kiện kích hoạt:** `clearIncident('server_down')` (`2546`) → 60 % `startTheme(backup_scare)` (vụ trọng số 0 chỉ bật kiểu này).
+- **`activeTheme()`** (`4126`) tự kết vụ khi quá `until` (kể cả khi timer `theme_end` đã mất).
+- **Kết vụ `endTheme`** (`4168`): quá **17:30** (vd server khởi động lại buổi tối, hẹn kết vụ đã trễ) → kết lặng lẽ, không trao giải / khui quà cho vài người ở lại muộn. `contest_winner` → bốc người thắng trong số người có mặt (trọng số 1 + 0,6 × số món đang có), mood +10, ký ức, log 🏆 "được sếp bao trà sữa cả tuần". `gift_exchange` → tối đa **2 cặp** tặng → nhận: món cho người nhận chọn bằng `chooseProduct([người nhận], tags của vụ, …, skip)` với `skip` = mọi món người nhận đã có (`ownedBy`: sổ sở hữu + đồ trên bàn), **món đang chờ shipper giao cho người đó** (`pendingOrders`) và món đã tặng cặp trước — không tặng món người ta đã có / sắp có, hai cặp không trùng quà (rà soát 2026-11-03: trước đây điểm cộng "người sở hữu" làm Ngọc nhận đúng hũ nến đang trên bàn ~21 % lần); người nhận này hết món hợp → thử người nhận khác, vẫn hết → bỏ lọc "món vừa nhắc" (`chooseProduct(…, ignoreRecent = true)`); đã báo vụ mà không ghép được cặp nào (≥ 2 người có mặt) → log 🎁 "Vụ tặng quà bí mật khép lại sớm…" thay vì im lặng; `addOwned` + `setDeskItem` (món thành đồ trên bàn người nhận), quan hệ +4 hai chiều ("tặng/được tặng quà bí mật"), ký ức cả hai, log 🎁; cặp đầu tiên có thêm cảnh `desk_visit` tone `'gift'` (mode `'gift'`, tiêu đề "X tặng quà Y" 🎁).
+
+### 11.3 Chọn món — `offerProduct` → `chooseProduct` (`3976`, `3991`)
+
+- `offerProduct(type, people, initiatorId?)`: chỉ loại cảnh có `SCENE_DEFS[type].product` (hoặc `desk_visit` của marketing); không có `productLock`; cách `lastProductAt` ≥ `PRODUCT_MENTION_MIN_MINUTES` phút thật; xác suất **50 %**, **80 %** khi đang "boost" (`productBoostUntil` — payday 120 phút, hoặc có vụ đang chạy).
+- `chooseProduct(people, ctx, theme, speakerId?, skip?, ignoreRecent?)`: duyệt cả danh mục, bỏ `recentProducts` (8 món vừa nhắc; `ignoreRecent` bỏ qua lọc này — chỉ quà tặng dùng khi hết món, §11.2) và món trong `skip` (quà tặng). Mỗi món tính `c = contextScore(món, tags ngữ cảnh)` (số tag trùng, **bỏ tag chung** `van-phong`, `lam-dep`, `cong-nghe` — `products.ts:296`), `th` = điểm khớp tag vụ (vụ `tags: []` → 1 cho mọi món), `owners` = người trong cảnh đã có món. **`c = th = 0` và không ai có → món không có cớ, bỏ.** Trọng số `(c + 2·th + (có người sở hữu ? 2 : 0)) / (1 + 0,35 · số lần đã nhắc)` → món ít được nhắc tự lên (26 món xoay vòng đều). Không món nào có cớ → cảnh không có sản phẩm.
+- `productTags(type, people)` (`4213`) — tag ngữ cảnh suy từ tình trạng: energy < 40 → `ca-phe, nang-luong, do-uong, tra`; stress > 65 → `thu-gian, massage, suc-khoe`; có dev → `dev, ban-phim, chuot, tai-nghe, man-hinh, cong-nghe, ban-lam-viec`; designer → `design, decor`; `lunch` → `an-vat, hop-com, do-an, an-trua, nau-an`; marketing → `lam-dep, thoi-trang, livestream, tiktok, content, trang-diem`; `celebration` → `qua-tang, tiec, karaoke, sinh-nhat, trang-suc`; sếp → `golf, sep, tra`; stress > 50 hoặc 30 % → `ghe, lung`; 11:30–14:00 hoặc energy < 30 → `ngu-trua, chan-goi`; đang boost → `qua-tang, du-lich, thoi-trang`; sale mới / junior 40 % → `game, gaming, sac, dien-thoai`; 13:00–16:00 25 % → `quat, may-lanh, nang, mo-hoi`; sale 30 % → `cong-tac, du-lich, phong-hop`; chiều thứ Sáu → `ve-sinh, don-dep, cuoi-tuan`; ngày chia hết cho 15 → `di-chua, ram, le`.
+
+### 11.4 Kiểu chuyện — `makeOffer` + `PRODUCT_ANGLES` (`director.ts:4012`, `shopping.ts:147`)
+
+1. Món hợp vụ và không ai trong cảnh sở hữu → 70 % lấy **vụ làm cớ**: angle = tiền đề của vụ + "món này len vào chuyện vì đúng là thứ hợp vụ (…)", hook = hook của vụ, `angleKey = 'theme:<key>'`, `buys = 0,6`; người nói = `speakerId`, hoặc marketing nếu vụ do marketing, hoặc một người không phải sếp.
+2. Còn lại → bốc **một kiểu chuyện** trong 16 kiểu, lọc theo `need` (có người sở hữu → chỉ `owner`/`any`; chưa ai có → chỉ `new`/`any`) và mức giá `feel`; **né 5 kiểu vừa dùng** (`recentAngles` ≤ 8; hết lựa chọn thì bỏ điều kiện né); kiểu `owner` ×1,6 khi có người sở hữu. Tên thật được điền vào `{owner}{speaker}{other}` (`fillAngle`); `need_first` còn kèm "rắc rối gợi ý" = một `hook` của món. Kiểu `owner` → người nói = người sở hữu, `mode = 'owner'`. Ở **showroom**, `dShowroom` quyết chế độ theo **người khoe có món đó hay không** (`productMode = owns(người khoe, món) ? 'owner' : 'showroom'`, rà soát 2026-11-03): có → prompt "MÓN ĐỒ … ĐÃ CÓ" và câu mẫu offline `SR_PRODUCT` kể như người đã dùng; chưa → "MÓN TRÊN KỆ" (xem review, săn sale…). Trước đây showroom luôn `'showroom'` nên người đã có món lại nói như sắp mua.
+
+| key | Cần | Giá | Trọng số | Chốt đơn (`buys`) | Ý |
+|---|---|---|---|---|---|
+| `surprised_good` | owner | | 1.4 | | mua thử chẳng kỳ vọng, ổn bất ngờ, giờ rủ người kia |
+| `great_value` | owner | rẻ / vừa | 1.2 | | khoe giá mềm hơn tưởng (không con số), người kia nghi "rẻ vậy chắc dỏm" |
+| `worth_it` | owner | cao | 1 | | xót ví mà dùng thấy đáng tiền |
+| `desk_spotted` | owner | | 1 | | người kia để ý món mới trên bàn, hỏi mua ở đâu |
+| `convert_skeptic` | owner | | 0.8 | | từng chê, bị dụ mua, giờ dụ lại người khác |
+| `borrowed_forever` | owner | | 0.8 | | người nhà mượn luôn không trả |
+| `gift_kept` | owner | | 0.7 | | định mua tặng, dùng thử rồi giữ luôn |
+| `family_fan` | owner | | 0.6 | | mua cho bố mẹ được khen, tự phong chuyên gia tư vấn |
+| `wrong_variant` | owner | | 0.5 | | đặt nhầm màu/mẫu mà lại hợp |
+| `need_first` | any | | 1.4 | 0.25 | than đúng rắc rối, người nói chợt nhớ ra món này |
+| `midnight_sale` | new | | 0.9 | 0.9 | thức canh sale, tay nhanh hơn não |
+| `group_buy` | new | | 0.9 | 0.8 | rủ mua chung cho freeship, cãi ai ứng tiền |
+| `review_binge` | new | | 0.8 | 0.5 | xem review cả tuần chưa dám chốt |
+| `impulse_stress` | new | | 0.7 | 0.85 | chốt đơn lúc stress deadline để "tự thưởng" |
+| `comparison` | any | | 0.7 | 0.2 | so với đồ cũ ở nhà |
+| `hide_purchase` | new | vừa / cao | 0.5 | 0.9 | nhờ nhận hàng hộ cho người nhà khỏi biết |
+
+### 11.5 Sở hữu, giao hàng, khui hộp, tặng quà
+
+- **Sổ sở hữu** `owned[agentId] = [{id, day}]` (≤ 6 món/người, mới nhất cuối). `owns()` tính cả "món đồ trên bàn" (`deskItemProductId`, [03](03-mo-phong-the-gioi.md) §15.4). `addOwned` ghi luôn **món đang trên bàn bị thay** vào sổ trước món mới (mọi nơi gọi `addOwned` rồi mới `setDeskItem`: giao hàng, quà, `own`) — trước đây món trên bàn từ roster chỉ "có" qua `deskItemProductId`, bị thay là "quên" và sau đó có thể "mua" lại đúng món đó. Có món → vài hôm sau người đó hay **kể lại** (kiểu `owner`, §11.4; showroom 60 %, §7.2).
+- **`afterProductLine(s, speakerId)`** (`4073`, gọi khi dòng `product` lên sóng): `productUses[id]++`, nhớ `angleKey`; chỉ với mode `mention`/`showroom`: người nói còn làm, chưa có món, hôm nay < 3 lần giao → xác suất `buys` → timer `'delivery'` sau **90–300 phút game** (ghi `since` = lúc đặt). Vì vậy ở mode `mention`/`showroom` người nói **chưa có món**: thoại chỉ được "đang tính / để ý / nghe kể", không "mới mua / xài rồi" (câu mẫu offline [05-lop-ai.md](05-lop-ai.md) §9.3; prompt "MÓN TRÊN KỆ" cấm kể đã dùng).
+- **`deliver(t)`** (`4087`): người nhận vắng / đã về → hàng "để ở lễ tân", thử lại 09:30–11:00 **buổi sáng kế tiếp** (timer chạy trước 9:00 — vd sau nhiều ngày server tắt — thì ngay sáng nay), hụt tối đa 2 lần; **văn phòng đóng cửa** (không ai có mặt: cuối tuần ở `TIME_MODE=realtime`) không tính là giao hụt; đơn quá **5 ngày** kể từ lúc đặt (`since`, `DELIVERY_MAX_AGE`) thì thôi. **Giờ giao rơi sau giờ tan làm** (timer còn trước 00:00 mai lúc `onDayEnd`): dời sang sáng mai 09:30–11:00, `tries + 1` (chỉ khi hôm đó có người đi làm), quá 2 lần / quá 5 ngày thì huỷ — trước đây `onDayEnd` xoá luôn (~1/7 đơn đã "chốt" không bao giờ về), và đơn chốt chiều thứ Sáu ở realtime hụt 2 lần vào thứ Bảy / Chủ nhật rồi mất. Có mặt → `addOwned` + `world.setDeskItem` (món thành đồ trên bàn, hiện trong hồ sơ) + ký ức + log 📦 "Shipper giao hàng tới cho …" + `desk_visit` low tone `'unbox'` (`productMode 'unboxing'`, tiêu đề "X khui hàng mới" 📦, đồng nghiệp ghé xem khui hộp). `deliveriesToday` về 0 mỗi sáng (`resetDay`).
+- **`attachProduct(draft, …)`** (`4054`): gắn món vào `desk_visit` xếp từ hàng đợi (`d.productId` + `productMode` + `productAngle`); người nói câu sản phẩm = initiator nếu mode `gift`/`mention`, còn lại = target (người khui hộp / người đã có). Thiếu angle thì dùng câu mặc định theo mode. `VisitTone` thêm `'unbox' | 'gift'` (`scenes.ts` `VisitTone`) để tình huống ghé bàn đúng không khí (v5 thêm `'support'`, §16.3).
+
+### 11.6 AI biên kịch: beat `shopping_story`
+
+- Beat thứ 18 trong `BEAT_MENU` (`catalog.ts:327`): "chuyện đời thường quanh MỘT món trên kệ (ghi đúng tên món vào note)…" — khi gửi thực đơn, mô tả được nối thêm danh sách **tên đời thường** của các món (`shelfNames()`, `story.ts:22`) để AI chọn đúng món có thật. `BEAT_CAST`: cần `ab`, a = 0,5 + gossip (+1 nếu marketing), b theo quan hệ với a, 2 bước; trọng số kế hoạch offline 0,6; note mặc định "A vừa săn được một món trên kệ, kể cho B nghe".
+- Món của mạch: `productForArc` (`story.ts:27`) — `findProductInText(note)` (`products.ts:311`: khớp nguyên cụm tên đời thường, hoặc ≥ 2 từ có nghĩa của tên); không thấy thì chọn món hợp vai của a theo `DESK_ITEM_TAGS`, **trừ mọi món a đã có** (món trên bàn + sổ sở hữu của Director qua `StoryContext.ownedBy`; ưu tiên cả món b chưa có) — mạch là "vừa săn được" (trước đây ~55 % mạch offline nói về món a đã có từ ngày đầu, và món trên bàn bị thay bởi giao hàng / quà vẫn bị "mua lại"). Note của AI nêu đúng một món a **đã có** → `undefined`, mạch bị bỏ (note đã hiện cho người xem nên không đổi sang món khác). Không có món nào → bỏ bước.
+- Bước 0: log 🛍️ (note), hành động mới **`{ t: 'own', id, productId }`** (Director: `addOwned` + `setDeskItem`, chỉ khi người đó còn làm và **chưa có** món đó), bước này không bao giờ bị cổng 0.88 bỏ qua (§10.4), `desk_visit` a → b `mode 'mention'`, angle = note của AI. Bước 1 (30–90 phút sau): `desk_visit` b → a `mode 'owner'` ("hỏi thêm về món đồ hôm bữa") + ký ức. Smoke-story khẳng định `BEAT_KINDS.length === 28` (v5) và có `shopping_story`.
+
+### 11.7 Luật giá & an toàn (code + prompt + sanitize)
+
+- AI **không bao giờ nhận con số giá**: Director chỉ gửi `priceFeel` (`priceFeelOf`: ≤ 250k `re` · ≤ 800k `vua` · còn lại `cao` · không đọc được giá → không nhắc giá); prompt dặn từ ngữ theo mức ("rẻ bất ngờ" / "giá mềm" / "xót ví mà đáng", món đắt cấm gọi là rẻ). Giá tham khảo (`priceHint`) chỉ hiện trên chip / tooltip / tab 🛍️ ở client.
+- Chỉ nói trong phạm vi `facts`, tránh mọi điều trong `avoid`, gọi món bằng tên đời thường `short` (không chép tên catalogue), không link / mã giảm / "mua ngay" / giọng quảng cáo, đúng 1 câu `product: true` — chi tiết prompt ở [05-lop-ai.md](05-lop-ai.md) §6.3.
+- Lưới an toàn: `sanitize` bỏ mọi câu nhắc món có con số giá (`hasPrice` = `PRICE_RE` sau khi gỡ cụm đếm `NOT_PRICE_RE` — bắt cả "5tr7", "1tr2", "199.000₫", "1.290.000"; không bắt "20k view", "1 đồng nghiệp", "2K", "27 inch"); còn < 2 câu / 1 người nói thì cả cảnh hỏng → câu mẫu offline ([05](05-lop-ai.md) §8.2). `sanitizeBeats` cũng bỏ `note` của AI biên kịch có con số giá (note hiện ra dòng sự kiện, vd 🛍️ của `shopping_story`) → dùng mô tả thực đơn.
+
+### 11.8 Lưu trạng thái
+
+`serialize()` thêm khoá `shopping: { theme, recentThemes, lastThemeDay, recentAngles, productUses, owned, deliveriesToday }` (`director.ts:4488`); `restoreShopping` (`4504`) lọc chặt: vụ phải có trong `SHOPPING_THEMES`, `productUses`/`owned` chỉ giữ id còn trong `data/products.json` (đổi danh mục → sổ cũ tự rơi), `owned` ≤ 6/người, `deliveriesToday` 0–10. `parseTimer` nhận thêm `'theme' | 'theme_end'` (themeKey phải hợp lệ) và `'delivery'` (cần agentId + productId, `tries` 0–5, `since` — bản lưu cũ chưa có thì lấy `at`). Timer giao hàng dời sang ngày mai vẫn được giữ qua đêm (`at ≥ 00:00 mai`); timer giao hàng **còn trong hôm nay** lúc `onDayEnd` được dời sang 09:30–11:00 mai (§11.5) chứ không bị dọn như các timer khác.
+
+### 11.9 Tinh chỉnh nhanh
+
+| Muốn | Sửa |
+|---|---|
+| Vụ mua sắm thường / hiếm hơn | `chance(0.5)` trong `planDay` (`director.ts:778`), `weight` từng vụ trong `SHOPPING_THEMES` |
+| Thêm một vụ | thêm phần tử `SHOPPING_THEMES` (key, icon, by, announce, hook, angle, tags khớp tags trong `data/products.json`, minutes, weight, when?, payoff?) — không cần sửa Director |
+| Thêm / đổi kiểu chuyện | `PRODUCT_ANGLES` (need, feel, weight, buys) + câu mẫu offline tương ứng nếu muốn ([05](05-lop-ai.md) §9.3) |
+| Nhắc sản phẩm dày / thưa hơn | `PRODUCT_MENTION_MIN_MINUTES` (env), xác suất 0,5 / 0,8 trong `offerProduct` |
+| Hàng về nhiều / ít hơn | `buys` của kiểu chuyện, trần 3 lần giao / ngày và khoảng 90–300 phút trong `afterProductLine` |
+| Mức giá rẻ / vừa / đắt | ngưỡng 250k / 800k trong `priceFeelOf` (`products.ts:288`) |
+
+---
+
+## 12. Tin đồn (`RumorBook`, `src/sim/rumors.ts`)
 
 - Hằng: `MAX_RUMORS 12`, `MAX_VERSIONS 10`, `MAX_TEXT 300` (`7-9`). Id `r<day>_<seq>`.
 - `record(o)` (`84-117`): tạo mới hoặc thêm phiên bản; mỗi lần kể = 1 `RumorVersion` với `listenerId = listeners[0]`; mọi người nghe cùng được thêm `heardBy` (không bao giờ thêm `aboutId`); giữ bản gốc + 9 bản mới nhất; `prune()` xoá tin không active trước khi > 12.
@@ -536,12 +650,12 @@ Phía Director: `dGossip` (`1873`) 60% kể tiếp tin đang lan (`pickContinuat
 
 ---
 
-## 12. Bản tin cuối ngày, ghi chép, archive, `stats()`
+## 13. Bản tin cuối ngày, ghi chép, archive, `stats()`
 
 - `makeRecap(day, results)` (`3934-3964`), gọi từ `onDayEnd` khi `worked` (có người hiện diện hoặc KPI > 0) và chưa làm cho ngày đó: `RecapRequest { day, weekday, events: recapEvents() (notable + dayEvents ≤ 32 dòng, sắp theo giờ, ≤ 160 ký tự), kpi, firedToday, hiredToday }` → `brain.generateRecap` async → `recapList` (≤ `KEEP_RECAPS 14`) → emit `{t:'recap'}` + log 📰 "Bản tin ngày N đã lên sóng".
 - `logEvent(icon, text, kind = 'event' | 'hr', notable = true)` (`3975`) → `world.log` + `pushDayEvent` (≤ 40 dòng/ngày; `notable` ≤ 25 → vào `SitKit.recent` và `StoryContext.recentEvents`). Quy ước: emoji ở `icon`, `text` chữ thuần.
 - `ctx()` (`3994`): `PromptContext` với `agents` gồm cả người đã nghỉ trong `departed`, `roster` active, `recentSummaries` 8.
-- `watch()` (`4051-4063`, mỗi 1 s thật): bộ đếm hoạt động trong ngày `actCounts[id][activity]`. Chỉ đếm khi hoạt động **đổi** so với lần trước (`lastAct`; lần quan sát đầu sau khởi động không đếm vì `prev === undefined`), người đó **không trong cảnh** (`!a.sceneId`) và hoạt động thuộc `COUNTED = coffee, toilet, pingpong, slacking, napping, snack, chill, showroom` (`151`) — một ly cà phê kéo dài 10 phút vẫn là 1, và cảnh `pantry_chat` không làm tăng số "cà phê". Cùng vòng lặp này bật `daySawPresence` khi có người active có mặt (`4061`; `handleArrival` cũng bật, `2382`) — cờ quyết định `worked` ở `onDayEnd` (§5.8). Bộ đếm nuôi `factsOf` (`4024`, §3.1), `rumorSeed` (`1916`, §11) và `interestOf` (`4044`, chọn "phốt" cho `pickGossipSubject`); **không** dùng cho `productTags`. `resetDay` xoá mỗi sáng; `serialize` lưu `actCounts`.
+- `watch()` (`4051-4063`, mỗi 1 s thật): bộ đếm hoạt động trong ngày `actCounts[id][activity]`. Chỉ đếm khi hoạt động **đổi** so với lần trước (`lastAct`; lần quan sát đầu sau khởi động không đếm vì `prev === undefined`), người đó **không trong cảnh** (`!a.sceneId`) và hoạt động thuộc `COUNTED = coffee, toilet, pingpong, slacking, napping, snack, chill, showroom` (`151`) — một ly cà phê kéo dài 10 phút vẫn là 1, và cảnh `pantry_chat` không làm tăng số "cà phê". Cùng vòng lặp này bật `daySawPresence` khi có người active có mặt (`4061`; `handleArrival` cũng bật, `2382`) — cờ quyết định `worked` ở `onDayEnd` (§5.8). Bộ đếm nuôi `factsOf` (`4024`, §3.1), `rumorSeed` (`1916`, §12) và `interestOf` (`4044`, chọn "phốt" cho `pickGossipSubject`); **không** dùng cho `productTags`. `resetDay` xoá mỗi sáng; `serialize` lưu `actCounts`.
 - `archive(kind, text, data)` (`2964`): ghi vào JSONL theo ngày qua `world.getArchive()` hoặc singleton; kind `hr`, `resign`, `news`, `beat`. Log thường World đã tự lưu nên Director không lưu lại. No-op khi `HISTORY_ENABLED=false`.
 - `stats()` (`572-590`, chỉ đọc, cho test/debug) gộp thành một object phẳng:
 
@@ -557,11 +671,13 @@ Ngoài `stats()`, Director còn vài hàm công khai **chỉ đọc** không thu
 
 ---
 
-## 13. Lưu / khôi phục trạng thái Director (`serialize` `4103`, `restore` `4171`)
+## 14. Lưu / khôi phục trạng thái Director (`serialize` `4431`, `restore` `4534`)
 
-`serialize()` → `{ v: 2, seq, plannedDay, lastRecapDay, recaps, rumors, queue (bỏ candidate), timers, story: { showrunner, ledger, newsUsed, discussedNews, newsCatIdx, bossStrictUntil, overtime, lateTomorrow, driftPlans, counters(v3) }, summaries, recentTopics, dayEvents, notable, firedToday, hiredToday, lateToday, lateDays, vacancies, usedNames, birthdays, birthdayToday, lastBirthdayDay, boost, productBoostUntil, recentProducts, companyToday, actCounts, daySawPresence, counters }`. Cảnh HR đang diễn dở được **xếp lại** vào `queue` với `at = now + 1`, cửa sổ 150: `firing/hr_warning` (`4113`), các `HR_SCENE_TYPES` còn lại giữ `newLabel/hint` (`4117`), `hr_review` giữ `note/force` (`4120`).
+`serialize()` → `{ v: 2, seq, plannedDay, lastRecapDay, recaps, rumors, queue (bỏ candidate), timers, story: { showrunner, ledger, newsUsed, discussedNews, newsCatIdx, bossStrictUntil, overtime, lateTomorrow, driftPlans, counters(v3) }, summaries, recentTopics, dayEvents, notable, firedToday, hiredToday, lateToday, lateDays, vacancies, usedNames, birthdays, birthdayToday, lastBirthdayDay, boost, productBoostUntil, recentProducts, companyToday, actCounts, daySawPresence, counters, shopping (v4: vụ mua sắm, sổ sở hữu, số lần nhắc từng món — §11.8) }`. Cảnh HR đang diễn dở được **xếp lại** vào `queue` với `at = now + 1`, cửa sổ 150: `firing/hr_warning` (`4113`), các `HR_SCENE_TYPES` còn lại giữ `newLabel/hint` (`4117`), `hr_review` giữ `note/force` (`4120`); **v5:** `crisis_meeting` (chỉ `arcId`, cửa sổ 150) / `pep_talk` (`arcId, variant, targetId`, `note = req.crisis.topic`, hoà giải thêm `aId/bId` lấy từ `participants[1..2]` — `dPepTalk` xếp `[người nói, a, b]`; cửa sổ 120) của tình huống công ty, cùng `prio` với cảnh, nếu hàng đợi chưa có mục cùng loại + cùng mạch — không thì sau khởi động mạch chờ 180 phút rồi "chốt nhanh qua điện thoại" trái với cuộc họp người xem vừa thấy, và truyền lửa mất thì mất ±0,2 xác suất kết cục.
 
-`restore()`: đặt `office/online/productLock = null`, `nextSweepAt = 0` (dọn mồ côi ở tick đầu); `parseQ` (`4334`) **bỏ `boss_catch`** và interview thiếu `role`, kẹp `retries ≤ 5`, chỉ chép khoá trong `Q_STR_KEYS`; `parseTimer` chỉ nhận `TIMER_EVENTS`; `parseVacancy` bỏ boss/hr, kẹp kpiTarget 50..2000; vacancies gộp theo vai trừ `extra`; `Showrunner` dựng lại rồi `restore`; `restoreLedger`; `driftPlans` ≤ 30, delta kẹp ±0.1.
+Mạch truyện (`story.showrunner.arcs`) lưu qua `canonArc` với thứ tự khoá cố định, kèm các trường v5 `plan/planBy/pep/sideA/sideB/waited/outcome` (§16.7).
+
+`restore()`: đặt `office/online/productLock = null`, `nextSweepAt = 0` (dọn mồ côi ở tick đầu); `parseQ` **bỏ `boss_catch`** và interview thiếu `role`, kẹp `retries ≤ 5`, chỉ chép khoá trong `Q_STR_KEYS` (v5 thêm `kind`, `aId`, `bId` cho cảnh họp / truyền lửa đang chờ); `parseTimer` chỉ nhận `TIMER_EVENTS` (v4 thêm `theme`/`theme_end`/`delivery`, §11.8); `restoreShopping` lọc sổ mua sắm theo danh mục hiện tại; `parseVacancy` bỏ boss/hr, kẹp kpiTarget 50..2000; vacancies gộp theo vai trừ `extra`; `Showrunner` dựng lại rồi `restore`; `restoreLedger`; `driftPlans` ≤ 30, delta kẹp ±0.1.
 
 **Không lưu** (tính lại sau khởi động): `clockMs`, `agentLast`, `lastCaught`, `nudge`, `lastNewsAt/lastShowroomAt/lastProductAt` (các cap về mốc warm-up 2 phút), `lastNewsHintAt`, `departed`, `calledToday`, `bossLeftAt/bossAwayMin`, `clapsToday`, `planning`.
 
@@ -569,7 +685,7 @@ Thứ tự khởi động thật (`src/server.ts:245-256`, `world.ts:1022-1070`)
 
 ---
 
-## 14. Công thức thêm một loại cảnh mới
+## 15. Công thức thêm một loại cảnh mới
 
 Ví dụ muốn thêm `coffee_run` (hai người rủ nhau đi mua cà phê ngoài). Làm theo thứ tự, mỗi bước một file:
 
@@ -584,6 +700,107 @@ Ví dụ muốn thêm `coffee_run` (hai người rủ nhau đi mua cà phê ngo�
 
 Checklist tiết kiệm token khi thiết kế cảnh mới: đặt `priority` thấp nhất có thể (`low` cho "chất độn"), `maxLines` nhỏ, `topics: []` nếu không muốn `topicHint` tốn chữ, và tự hỏi liệu một `GroupReason` mới có đủ thay cho cả một loại cảnh.
 
+Cảnh có **nhiều hơn hai kết quả** (v5 `crisis_meeting`): `VERDICT_BY_TYPE.values` và `VERDICT_RULES.values` là mảng, mã cụ thể đưa vào prompt qua `req.crisis.options`; đặt `fallback: null` và để Director tự giữ lựa chọn dự phòng trong `meta` (§16.4) thay vì để sanitize đoán.
+
+---
+
+## 16. Tình huống công ty (v5, `src/content/situations.ts` + `Showrunner` + Director)
+
+Chủ dự án yêu cầu (2026-11-03): công ty phải có **đủ tình huống thật** — thiếu tiền, kẹt dòng tiền, khủng hoảng kinh tế, khủng hoảng truyền thông, drama xấu / tốt về công ty, chuyện cá nhân ảnh hưởng công việc, chia bè kết phái, nhân viên chống đối, sếp "làm công tác tư tưởng" — và **AI quản lý, dàn xếp, xử lý** như "một sếp AI quản một đám nhân viên AI, leader AI", nhưng vẫn giữ hạn mức AI miễn phí. Thiết kế (quyết định: [12-quyet-dinh-thiet-ke.md](12-quyet-dinh-thiet-ke.md) ADR-31): mỗi tình huống là một **mạch 4 bước** của AI biên kịch; ở bước 2 sếp / lead / HR **họp** và **AI chốt 1 phương án** trong danh sách code đưa ra; code thi hành phương án và **quyết hậu quả bằng xác suất** theo phương án + tình hình; AI chỉ viết thoại cho từng cảnh. Người xem chỉ thấy đời sống văn phòng: dòng sự kiện, nhóm chat xì xào, thẻ cảnh "🧯 Họp xử lý: …", "📣 … truyền lửa", dòng "🧯 <chủ trì> chốt: <phương án>", rồi dòng ✅ / ⚠️ kết cục.
+
+### 16.1 Dữ liệu: `SituationDef` / `PlanDef` / `SitFx` (`src/content/situations.ts`)
+
+Thuần dữ liệu, không import World. Mỗi `SituationDef`: `kind` (= kind beat), `icon`, `title`, `menu` (mô tả cho thực đơn AI biên kịch, nói rõ khi nào hợp), `cast` (`none | a | ab`) + `castA/castB` (trọng số chọn người trung tâm), `notes[]` (câu mở màn khi AI bỏ trống `note`; `{a}` `{b}` `{boss}`), `outbreak: { fx?, whisper }` (hiệu ứng + chuyện nhóm kín bàn), `meeting: { roles, topic, withCenter? }`, `plans: PlanDef[]` (3–4), `weight(SitWorld)` (trọng số offline / có lên thực đơn không; 0 = không hợp lúc này). Mỗi `PlanDef`: `code` (`plan_a..plan_d`), `label` (≤ 90 ký tự — vào prompt cuộc họp và dòng "chốt"), `follow: FollowKind` (việc làm ở bước 3), `now?: SitFx` (hiệu ứng ngay khi chốt), `odds` (xác suất kết cục tốt gốc), `good: { text, fx? }`, `bad: { text, fx?, resign?, hrReview? }`, `when?(SitWorld)` (chỉ đưa ra bàn khi đúng tình hình). `plansFor(def, s)` lọc theo `when`, luôn trả ≥ 2 phương án. `fillSit(text, {a, b, boss})` điền tên. Mọi câu chữ là chuỗi tiếng Việt cứng (không nêu tên người thật / tổ chức thật).
+
+`SitFx` = `{ all?: {mood, stress}, center?: {mood, stress, kpi}, group?: {mood, stress, kpi}, boss?: {mood, stress}, bossRel?, revenue?: [min, max] }` — đơn vị như `World.adjust`, `revenue` là triệu (ngẫu nhiên trong khoảng). `group` **chỉ có người** khi phương án là `sales_push` / `overtime`, hoặc tình huống có người trong cuộc / hai phe (`groupOf`); với tình huống `cast: 'none'` dùng `all` (rà soát 2026-11-03: `market_slump` phương án a từng đặt `now.group` → không ai bị ảnh hưởng; `smoke:story` có khẳng định "không phương án nào có hiệu ứng group rơi vào nhóm rỗng"). **KPI giữ nhỏ (≤ 8) và chỉ cho người trung tâm**: lần đầu cộng KPI +10..+20 cho cả nhóm sales/dev làm `smoke:story` báo lệch "% KPI theo người" (nguyên tắc 2 — không ai được ưu ái hệ thống), nên đã hạ.
+
+`SitWorld` (dựng bởi `sitWorldOf(w)` trong `story.ts`): `revenuePct` = `revenueRatio(w) × 100` (**theo nhịp tháng** — `MONTH_DAYS 20`, ngày 1–2 tính như ngày 2 — nên đầu tháng không bị coi là "kẹt tiền"), `moodAvg` (nhân viên trừ sếp), `staff`, `hasRole(r)`, `negPair` (có cặp `mutual ≤ −15`), `star` (có người KPI 7 ngày ≥ 110 %).
+
+### 16.2 Mười tình huống
+
+Trọng số offline đo ở bốn tình hình mẫu (bình thường · doanh thu 40 % nhịp · tâm trạng TB 40 · có "sao" và cặp kỳ phùng); phương án ghi `mã → FollowKind (odds)`, ⓡ = kết cục xấu gọi `resign_check`, ⓗ = kết cục xấu xếp `hr_review`, ⓦ = chỉ đưa ra bàn khi đúng điều kiện (`when`).
+
+| kind | Tên | Người trung tâm | Ai họp (ngoài chủ trì) | Phương án | Trọng số |
+|---|---|---|---|---|---|
+| `cash_crunch` 💸 | Kẹt tiền xoay vòng vốn | — | HR, saleslead, techlead | a thắt lưng buộc bụng → announce (0.6) · b đòi công nợ, chốt gấp hợp đồng → sales_push (0.5) ⓦ có sales · c nói thẳng: lương trễ vài ngày → pep_all (0.6) ⓡ · d sếp bỏ tiền túi / vay nóng, giữ kín → quiet (0.75) | 0.2 · **0.7** · 0.2 · 0.2 |
+| `market_slump` 📉 | Thị trường khó, khách cắt ngân sách | — | saleslead, techlead, HR | a gói giá mềm, thị trường mới → announce (0.5) · b đóng băng tuyển dụng, cắt chi phí → announce (0.65) · c dev tăng ca để nghiệm thu sớm → overtime (0.55) ⓦ có techlead/senior · d chuẩn bị cắt giảm nếu tháng sau vẫn lỗ → announce (0.4) ⓗ ⓦ doanh thu < 50 % | 0.05 · **0.7** · 0.05 · 0.05 |
+| `pr_crisis` 📢 | Khủng hoảng truyền thông | a (marketing ×4) | HR, saleslead **+ người trong cuộc** | a xin lỗi công khai, sửa, tặng bù → announce (0.7) · b im lặng chờ nguội → quiet (0.4) · c a làm clip hài tự giễu → pep_one (0.5) · d phản pháo đanh thép → announce (0.25) | 0.3 (0.15 nếu không có marketing) |
+| `good_press` 🌟 | Tin vui về công ty | — | saleslead, HR, techlead | a khao cả công ty, thưởng nóng → party (0.8) · b chạy quảng cáo, sales gọi khách ngay → sales_push (0.6) ⓦ · c khiêm tốn, nhắc đừng ngủ quên → pep_all (0.55) | 0.45 · 0.25 · 0.45 · 0.45 |
+| `personal_trouble` 🏠 | Chuyện nhà ảnh hưởng công việc | a (stress > 60, mood < 45 ưu tiên) | HR, techlead, saleslead | a cho nghỉ phép, team gánh việc → support (0.75) · b linh hoạt giờ giấc → support (0.65) · c nhắc "chuyện nhà để ở nhà" → pep_one (0.35) ⓡ · d công ty ứng lương / quyên góp → announce (0.8) | 0.35 · 0.35 · **0.55** · 0.35 |
+| `faction_split` ⚔️ | Chia bè kết phái | a & b (b khác mảng ×1.3) | HR, techlead, saleslead | a mời a & b ngồi lại, HR trọng tài → mediate (0.55) · b team building bắt buộc, xếp chỗ xen kẽ → party (0.5) · c cứng rắn, nhắc người cầm đầu → strict (0.45) · d kệ → quiet (0.3) | 0.25 · 0.25 · 0.25 · **0.65** (cần ≥ 5 nhân viên) |
+| `pushback` ✊ | Nhân viên chống đối | a (mood thấp, tham vọng) | HR **+ người trong cuộc** | a lắng nghe, sửa chính sách → announce (0.7) · b thương lượng, nhận việc bù → support (0.6) · c kỷ luật chính thức → strict (0.4) ⓡ · d sếp nói chuyện riêng → pep_one (0.55) | 0.3 · 0.3 · **0.6** · 0.3 |
+| `morale_talk` 📣 | Sếp làm công tác tư tưởng | — (bước 3 có thể chọn người buồn nhất) | HR, techlead | a họp toàn công ty truyền lửa → pep_all (0.55) · b nói riêng người buồn nhất → pep_one (0.6) · c khao trà sữa, về sớm thứ Sáu → party (0.8) · d "lương là động lực, KPI là danh dự" → announce (0.3) | 0.08 · 0.08 · **0.8** · 0.08 |
+| `poaching` 🎣 | Đối thủ câu người | a (tham vọng, senior/techlead/saleslead +0.6) | HR, techlead, saleslead | a tăng lương giữ người → pep_one (0.8) ⓡ · b hứa thăng chức + dự án lớn → pep_one (0.6) ⓡ · c tôn trọng, âm thầm tìm người thay → quiet (0.35) ⓡ · d "chúng ta là một gia đình" → pep_one (0.45) ⓡ | 0.12 · 0.12 · 0.12 · **0.4** |
+| `investor_visit` 🤵 | Nhà đầu tư ghé thăm | — | saleslead, techlead, HR | a trình bày thật, demo bản ổn định → announce (0.55) · b dàn dựng cho đẹp → strict (0.45) · c cho dev demo tính năng chưa xong → overtime (0.4) ⓦ | 0.15 |
+
+### 16.3 Mạch 4 bước — `Showrunner.situationActions` (`story.ts`)
+
+| Bước | Hành động |
+|---|---|
+| 1. Bùng phát (`step 0`) | `faction_split`: `splitSides` chia hai phe (mỗi bên thủ lĩnh + ≤ 2 người thân thủ lĩnh hơn phe kia ≥ 4 điểm `mutual`), quan hệ a↔b −3. Dòng sự kiện `icon + note`; hiệu ứng `outbreak.fx`; **nhóm chat kín** `group_chat` lý do `'situation'` với câu `whisper` (không có người trong cuộc; chia phe thì không có phe b); `good_press` / `investor_visit` thêm `company_chat` sếp thông báo; `personal_trouble` thêm người thân nhất ghé bàn hỏi han (`tone: 'support'`, lý do "hỏi han vì thấy dạo này khác lạ"); người trong cuộc nhớ chuyện (`memory`). |
+| 2. Họp (`step 1`) | `scene crisis_meeting` (`high`, chậm 2–10 phút, cửa sổ 150) với `{ kind, centerId? }` — §16.4. |
+| 3. Triển khai (`step 2`) | Suốt lúc cuộc họp của mạch còn chờ / đang diễn, Director **giữ** bước này (`hold`, §10.4) — nên tới đây là cuộc họp đã xong (hoặc hết cửa sổ) mà chưa có `arc.plan`: trả `{ t: 'wait', minutes: 30 }` (Director hoãn, cộng `waited`); **đợi thêm 30 phút** vẫn chưa có → `pickPlan` chọn dự phòng, dòng 🧯 "Không họp được đủ người, <sếp> chốt nhanh qua điện thoại: …" + hiệu ứng `now`. (Trước vòng rà soát 3: chờ 180 phút tính cả lúc họp, nên cuộc họp xếp lại sau khởi động vẫn có thể bị dự phòng "chốt" giữa chừng.) Rồi làm theo `FollowKind` (bảng dưới). |
+| 4. Kết cục (`step 3`) | `p = plan.odds` (+0.2 nếu `pep = inspired`, −0.2 nếu `unmoved`; −0.1 intensity 3, +0.05 intensity 1), kẹp 0.08–0.92, tung `chance(p)` → `arc.outcome`. Dòng ✅ / ⚠️ với `good.text` / `bad.text`; hiệu ứng `fx`; ký ức cho người trung tâm + sếp; xấu và `resign` → `resign_check` (người trung tâm, không thì người đang buồn nhất trừ sếp/HR); xấu và `hrReview` → `{ t: 'hr_review' }`; cảnh khép: tốt → `company_chat` sếp cập nhật, xấu → `group_chat` cả nhóm than. |
+
+Khoảng cách bước (`advance`): 40–90 phút (bùng phát → họp), 30–70 (họp → triển khai), 120–240 (→ kết cục); rơi ngoài 17:20 thì sáng mai 09:30–11:00 (cuối tuần / ngày server tắt không tính tuổi mạch — `holdAges`, §10.4). Tình huống **không** qua cổng 0.88 bỏ bước giữa (`runArcStep`).
+
+**Giọng `'support'`** (`VisitTone`, rà soát 2026-11-03): ghé bàn hỏi han người gặp chuyện / nói rõ hướng xử lý. Trước đây hai chỗ trên dùng `tone: 'warm'` — giọng "phát hiện sở thích chung, tình bạn mới chớm, hẹn đi cà phê" của `secret_friendship` — nên AI viết cảnh vui vẻ hẹn hò ngay sau tin "ba nằm viện". Mục tiêu cảnh `support` (`supportGoal` trong `scenes.ts`, theo lý do ghé bàn) có ba kiểu, câu nào cũng mở bằng "nói chuyện riêng, nhỏ nhẹ": **hỏi han** (lý do có "hỏi han" — công ty chưa bàn gì: lắng nghe là chính, không hứa gì thay công ty) · **thương lượng** (lý do bắt đầu bằng "thương lượng", từ `pushback` phương án b: người kia nêu điều kiện rồi chịu, hoặc vẫn càu nhàu) · **nói rõ hướng đã chốt** (còn lại: hỏi han rồi nói rõ hướng giải quyết và mọi người sẽ hỗ trợ thế nào). Người kia dè dặt rồi mở lòng (hoặc vẫn lấn cấn); tiêu đề thẻ "X hỏi han Y". Thoại mẫu offline: `dvSupport` ([05-lop-ai.md](05-lop-ai.md) §9.3).
+
+| `FollowKind` | Bước 3 làm gì |
+|---|---|
+| `announce` | `company_chat` "<sếp> thông báo quyết định trong nhóm công ty: …" + 12–30 phút sau `group_chat` nhóm kín bàn quyết định (người thấy hợp lý, người bức xúc) |
+| `pep_all` | `pep_talk` biến thể `all`, nội dung = nhãn phương án (§16.5) |
+| `pep_one` | `pep_talk` biến thể `one` với người trung tâm (không có thì người đang buồn nhất, ghi làm `arc.a`); "điều cần nói" = chủ đề họp + "hướng đã chốt: …" (nhãn phương án tả hành động, không phải lời thoại) |
+| `mediate` | `pep_talk` biến thể `mediate` với a và b |
+| `support` | lead cùng mảng (techlead cho dân kỹ thuật, saleslead cho dân kinh doanh, không thì HR) ghé bàn người trung tâm, `tone: 'support'`, lý do = phương án |
+| `sales_push` | `boss_call` lý do `task` cho saleslead (không thì một người kinh doanh) + tăng ca 60 phút × 2 ngày cho cả nhóm kinh doanh |
+| `overtime` | tăng ca 90 phút × 2 ngày cho dân kỹ thuật + nhóm kín than |
+| `strict` | `strict_boss` 150 phút + `boss_call` lý do `scold` người trung tâm (nếu có) + nhóm kín dặn nhau giả vờ bận |
+| `party` | `company_chat` thông báo + `celebration` lý do `team_building` 20–45 phút sau |
+| `quiet` | chỉ nhóm kín đoán già đoán non |
+
+Hiệu ứng `SitFx` → hành động có sẵn (`fxActions`): `all` → `adjust` mọi nhân viên (trừ sếp); `center` → `adjust` `arc.a`; `group` → `adjust` `groupOf(arc, plan)` (`sales_push` → dân kinh doanh, `overtime` → dân kỹ thuật, có hai phe → hai phe, không thì a/b); `boss` → `adjust` sếp; `bossRel` → `rel` từ mọi nhân viên (trừ HR) tới sếp; `revenue` → `revenue` ngẫu nhiên trong khoảng.
+
+### 16.4 Cuộc họp xử lý — `dCrisisMeeting` / `afterCrisisMeeting` (`director.ts`)
+
+- Bỏ (`'drop'`) nếu mạch không còn, đã kết, hoặc **đã có `plan`**. Chủ trì = sếp nếu `avail` (active, có mặt, không ẩn, `free(high)`) và **không đi vắng**, không thì HR; không ai → chờ (`null`).
+- Người trong cuộc (khi `meeting.withCenter`: `pr_crisis`, `pushback`) phải rảnh, không thì chờ. Thành viên: duyệt `meeting.roles`, tối đa 3, **loại chủ trì, người trong cuộc và cả `arc.a`/`arc.b`** — người bị câu, người gặp chuyện riêng, hai phe không ngồi họp bàn về chính mình (lỗi ban đầu: Phát ngồi họp "giữ chân Phát"). Cần ≥ 1 thành viên hoặc người trong cuộc.
+- Phương án đưa ra bàn = `plansFor(def, sitWorldOf(w))`; **lựa chọn dự phòng** chọn sẵn bằng `Showrunner.pickPlan` (bốc theo `0.25 + odds` — vẫn có bất ngờ). Mọi người đứng chỗ `meeting`; `sit` = `sitCrisisMeeting` (mỗi thành viên kèm "góc nhìn theo vai" `STANCE`, ví dụ HR lo tinh thần và giữ người, sales lo khách và công nợ); `meta = { arcId, pick, options }` (mã đưa ra bàn, phân cách dấu phẩy); `crisis = { kind, title, note, topic, options[{code, label}], pick, centerId }` → `req.crisis` (prompt in khối PHƯƠNG ÁN — [05-lop-ai.md](05-lop-ai.md)); `title` "Họp xử lý: <tên>", icon 🧯, `minPeople 2`.
+- Kết quả cảnh đi qua `cleanResult`, giữ `verdict` khi nằm trong `VERDICT_OK: Record<Verdict, true>` (`director.ts`) — **Record đầy đủ theo union `Verdict`** nên thêm giá trị mới mà quên ở đây thì typecheck báo. Lỗi rà soát 2026-11-03: danh sách cũ (mảng 6 giá trị) thiếu `plan_a..plan_d`, `inspired`, `unmoved` → mọi phương án AI chốt (và mọi kết quả truyền lửa AI viết) bị gạt thành `null`, mạch luôn dùng lựa chọn dự phòng (`planBy` luôn `offline`), dòng "🧯 … chốt: …" có thể trái với chính thoại cuộc họp. `npm test` không bắt được vì smoke chạy offline (verdict luôn = lựa chọn dự phòng); nay `smoke:story` có `llmVerdictCheck` (giả lập kết quả AI) và mutation test xác nhận nó bắt lỗi này ([11-kiem-thu-qa.md](11-kiem-thu-qa.md)). Model trả **số thứ tự** ("2", "phương án 2") → `sanitizeScene` hiểu là phương án thứ n **trong danh sách đã đưa** (bỏ chữ cái: a, c, d → "2" là `plan_c`) — [05-lop-ai.md](05-lop-ai.md) §8.2.
+- `afterCrisisMeeting`: `aiOk` = `verdict` nằm trong mã đã đưa ra bàn **và** `res.source === 'llm'` → dùng mã AI chốt, `planBy 'llm'`; không thì `meta.pick` (hoặc mã đầu), `planBy 'offline'`. `story.setPlan` (chỉ ghi một lần); dòng sự kiện **"🧯 <chủ trì> chốt: <phương án>"** (≤ 120 ký tự — thẻ cảnh ngay trên đã có tên tình huống); chạy `planNowActions` (hiệu ứng `now`); archive kind `beat` `🧯 <tên>: chốt <phương án>` kèm `{ id, kind, plan, by }`.
+
+### 16.5 Công tác tư tưởng — `dPepTalk` / `afterPepTalk`
+
+| Biến thể | Người nói | Người nghe | Chỗ |
+|---|---|---|---|
+| `all` | sếp (rảnh mức `normal`, không đi vắng), không thì HR | ≤ 4 nhân viên rảnh **buồn nhất** (cần ≥ 2) | phòng họp |
+| `one` | như trên | người trong cuộc | sếp → phòng Giám đốc (sếp ngồi ghế, người kia `boss_visit`); HR → phòng họp |
+| `mediate` | **HR trước**, không thì sếp | a và b (người vắng / nghỉ → `'drop'`); `minPeople 3` — phải đủ cả hai phía | phòng họp |
+
+Lựa chọn dự phòng (offline viết thoại theo nó; AI trả sai thì dùng nó): `p = 0.5 + (thiện cảm TB của người nghe với người nói)/120 + (mood TB − 55)/150` (+ `mutual(a, b)/100` khi hoà giải), kẹp 0.15–0.85 → `inspired` / `unmoved`. `sit` = `sitPepTalk` (mood từng người nghe, "điều cần nói"; tiêu chí `inspired` / `unmoved` chỉ nằm ở dòng YÊU CẦU, mục tiêu trong Tình huống không lặp lại — rà soát 2026-11-03; prompt chỉ thêm `BỐI CẢNH: <tên tình huống>`, [05-lop-ai.md](05-lop-ai.md) §6.3 hàng 15b); `crisis = { kind, title, note, topic, pick, variant, centerId }`. `afterPepTalk`: chỉ tin `verdict` khi `res.source === 'llm'` và hợp lệ (câu phủ định như "chưa xuôi", "chưa đủ thuyết phục", "not really convinced" được hiểu đúng là `unmoved` — phủ định theo từ, [05-lop-ai.md](05-lop-ai.md) §8.2); offline (kể cả cảnh khẩn cấp dùng verdict mặc định) → `meta.pick`, giống `afterCrisisMeeting`; `story.setPep` (ảnh hưởng ±0.2 xác suất kết cục); **cả phòng không xuôi** → 60% xếp `group_chat` "nhóm kín chế lại bài truyền lửa" (không có người nói).
+
+### 16.6 Hàng rào, nhịp và hạn mức AI
+
+- **Mỗi lúc một tình huống**: `accept` bỏ tình huống thứ hai; `offlinePlan` đặt trọng số 0 khi đang có; trong một lượt bốc 2 beat, đã bốc một tình huống thì loại các tình huống còn lại. Vẫn tính vào `MAX_OPEN_ARCS = 2`.
+- **Thực đơn AI gọn**: `situationMenu` chỉ đưa ≤ 3 loại (bốc theo `weight`, bỏ loại trong 6 beat gần nhất, bỏ loại trọng số 0) → prompt biên kịch không phình thêm 10 mô tả mỗi lần.
+- **Lượt gọi AI**: cuộc họp = 1 cảnh `high`, truyền lửa = 1 cảnh `normal`, các bước khác là cảnh thường (nhóm chat, thông báo, ghé bàn…) — tất cả qua `brain.reserve()` như mọi cảnh, không có lời gọi AI mới ngoài cổng; hết quota thì thoại mẫu offline vẫn khớp đúng phương án dự phòng.
+- Không in 🎬 cho tình huống (trùng dòng bùng phát); ký ức, quan hệ, KPI đi qua `World.adjust` / `changeRelationship` có kẹp sẵn.
+- Đo bằng `smoke:story` (6 hạt × 12 ngày, offline, 2026-11-03, sau rà soát vòng 3): mỗi hạt 7–9 cuộc họp xong, **mỗi cuộc họp có đúng 1 dòng "chốt"** (khẳng định theo từng hạt: số chốt ≥ số cuộc họp diễn xong), 0 lần chốt dự phòng, 7–9 mạch tới kết cục, 1–3 cảnh truyền lửa (≈ 0,7 tình huống / ngày game); mọi khẳng định khác (không ai bị đánh dấu, KPI không thiên lệch, round-trip) vẫn đạt.
+
+### 16.7 Lưu trạng thái
+
+Trường mới của `Arc` (§10.1) đi theo `story.showrunner.arcs`. `serialize()` ghi mỗi mạch qua `canonArc` (**thứ tự khoá cố định** — các trường gán dần lúc chạy như `waited`, `plan`, `a` không làm lệch bản lưu; lỗi round-trip đầu tiên của v5 là do thứ tự khoá). `restore()` nhận `plan` chỉ khi là `plan_a..plan_d`, `planBy`/`pep`/`outcome` theo giá trị hợp lệ, `sideA/sideB` qua `idList` (≤ 6 id chuỗi), `waited` kẹp 0–10000, `total` kẹp 1..`MAX_ARC_STEPS`. Cảnh họp / truyền lửa **đang diễn dở lúc lưu** được xếp lại vào hàng đợi để diễn lại sau khởi động (§14).
+
+### 16.8 Tinh chỉnh nhanh
+
+| Muốn | Sửa ở |
+|---|---|
+| Tình huống xảy ra nhiều / ít hơn, hợp hoàn cảnh hơn | `weight` từng mục trong `SITUATIONS`; số loại lên thực đơn AI (`situationMenu`, hiện 3) |
+| Phương án thành công dễ / khó hơn | `odds` của `PlanDef`; mức cộng/trừ của truyền lửa (±0.2) và intensity trong bước 4 `situationActions` |
+| Ai được gọi vào họp | `meeting.roles` / `withCenter`; loại người trong cuộc ở `dCrisisMeeting` |
+| Thời gian giữa các bước, chờ họp bao lâu | `advance` (40–90 / 30–70 / 120–240), cửa sổ 150 của cảnh họp; bước 3 được Director giữ suốt lúc cuộc họp còn chờ / đang diễn (`arcSceneLive` + `hold`), sau đó chờ thêm 30 phút (`waited < 30`) rồi mới chốt dự phòng |
+| Thêm một tình huống | thêm `SituationDef` (thực đơn, `BEAT_CAST`, ghi chú mặc định, trọng số offline tự sinh); cập nhật bảng §16.2, số beat trong `scripts/smoke-story.ts` và [14-quy-uoc-dong-gop.md](14-quy-uoc-dong-gop.md) §3 |
+
 ---
 
 ## Khi sửa code vùng này
@@ -595,19 +812,28 @@ Checklist tiết kiệm token khi thiết kế cảnh mới: đặt `priority` t
 | Trọng số/điều kiện `spontaneous()`, `free()`, cooldown, `pace()` | §5.3–5.4; `SPEC.md` §5.2 (hiện còn lệch, xem câu hỏi mở) |
 | `allowedActions`, `validateDecisions`, `MAX_DECISIONS`, cap trong `HrLedger` | §9.3–9.5; **`guardOk()` trong `scripts/smoke-story.ts:112-150`** (bản chép độc lập, test sẽ báo vi phạm); `SPEC.md` §5.6; `README.md` §6.2; chạy `npm run smoke:story` |
 | `offlineDecisions` (trọng số) | §9.6; `npm run smoke:story` (yêu cầu ≥ 1 hr_review có quyết định và "không ai bị đánh dấu" qua các hạt) |
-| `executeDecision`, `depart`, `deferDecisionScene`, `RETRY_TYPES`/`DEFERRABLE_TYPES`/`HR_SCENE_TYPES` | §9.7–9.8; §13 nếu đổi cách xếp lại khi khởi động; `npm run smoke:story` (kiểm `decisionsDeferred`, khoảng cách đuổi ≥ 2 ngày) |
+| `executeDecision`, `depart`, `deferDecisionScene`, `RETRY_TYPES`/`DEFERRABLE_TYPES`/`HR_SCENE_TYPES` | §9.7–9.8; §14 nếu đổi cách xếp lại khi khởi động; `npm run smoke:story` (kiểm `decisionsDeferred`, khoảng cách đuổi ≥ 2 ngày) |
 | `endOfDayHr`, `planStoryScenes`, `resolveProbations` (ngưỡng mood/lowMoodDays) | §9.10; `SPEC.md` §5.1 hàng resign_talk/raise_request và §5.6; `docs/v3-news.md` mục 4 (đang lỗi thời) |
 | `BEAT_MENU`/`BEAT_CAST`/`actionsFor`/`offlinePlan` | §10; `SPEC.md` §5.8 (bảng ánh xạ kind → bước); `catalog.ts` `BEAT_MENU` phải khớp `BEAT_CAST` và `defaultNote`; `npm run smoke:story` (≥ 3 beat, ≥ 1 mạch kết, ≤ 2 mạch mở, round-trip story) |
 | `StoryAction` (thêm loại) | `story.ts` type + `runAction` switch + §10.1/10.4 |
-| `RumorBook` (hằng, `leakCheck`), `rumorSeed`, `applyRumor` | §11; `SPEC.md` §5.4; client `{t:'rumors'}` không đổi shape |
-| `offerProduct`/`productTags`/cap showroom | §7; `SPEC.md` §5.5; `README.md` §5.2; `docs/v2-contract.md` §3 |
+| `RumorBook` (hằng, `leakCheck`), `rumorSeed`, `applyRumor` | §12; `SPEC.md` §5.4; client `{t:'rumors'}` không đổi shape |
+| `offerProduct`/`productTags`/cap showroom | §7, §11.3; `SPEC.md` §5.5; `README.md` §5.2; `docs/v2-contract.md` §3 |
+| `SHOPPING_THEMES` / `PRODUCT_ANGLES` (`src/content/shopping.ts`), `startTheme`/`endTheme`/`themeOk`, `chooseProduct`/`makeOffer` | §11.2–11.4 (hai bảng); tag mới phải khớp `tags` trong `data/products.json` ([09-cau-hinh-du-lieu.md](09-cau-hinh-du-lieu.md) §5); câu mẫu offline theo mode ([05-lop-ai.md](05-lop-ai.md) §9.3); `npm run smoke` + `npm run smoke:story` |
+| Sở hữu / giao hàng (`owned`, `afterProductLine`, `deliver`, `attachProduct`), `VisitTone` `unbox`/`gift` | §11.5; `serialize` khoá `shopping` + `restoreShopping` (§11.8, §14); `world.setDeskItem` ([03-mo-phong-the-gioi.md](03-mo-phong-the-gioi.md) §15.4) |
+| Beat `shopping_story`, `StoryAction 'own'` | §11.6, §10.1; `BEAT_MENU` + `BEAT_CAST` + `defaultNote` + trọng số offline; số beat trong `scripts/smoke-story.ts` (`BEAT_KINDS.length === 28`) |
+| `SITUATIONS` (thêm / sửa tình huống, phương án, `odds`, `weight`, `meeting.roles`), `situationActions`, `situationMenu`, `pickPlan` | §16 (bảng §16.2, §16.3); `BEAT_KINDS.length` + `SITUATION_KINDS` trong `scripts/smoke-story.ts`; [05-lop-ai.md](05-lop-ai.md) nếu đổi khối PHƯƠNG ÁN; giữ KPI trong `SitFx` nhỏ (khẳng định "KPI không thiên lệch"); `npm run smoke:story` |
+| Giá trị mới của `Verdict` (`src/types.ts`) | `VERDICT_OK` trong `director.ts` (Record đầy đủ — typecheck báo nếu thiếu), `VERDICT_BY_TYPE` + `VERDICT_SYNONYMS` (`sanitize.ts`), `VERDICTS` (`schemas.ts`), `VERDICT_RULES` (`prompts.ts`); `npm run smoke:story` (`llmVerdictCheck`) + `npm run test:llm` mục 12b |
+| `VisitTone` (thêm giọng ghé bàn, vd `support`) | `sitDeskVisit` (`scenes.ts`), `asTone` + tiêu đề trong `dDeskVisit` (`director.ts`), câu mẫu offline (`bDeskVisit`/`dvSupport`, [05-lop-ai.md](05-lop-ai.md) §9.3), §16.3 |
+| `dCrisisMeeting` / `afterCrisisMeeting` / `dPepTalk` / `afterPepTalk`, `FollowKind` mới | §16.4–16.5, bảng §3; `SceneRequest.crisis` ([02-kien-truc-va-giao-thuc.md](02-kien-truc-va-giao-thuc.md) §9); `scripts/test-llm.ts` mục 12b; ADR-31 ở [12-quyet-dinh-thiet-ke.md](12-quyet-dinh-thiet-ke.md) nếu đổi nguyên tắc "AI chốt, code quyết hậu quả" |
+| Trường mới của `Arc` | `restore()` trong `story.ts` **và** `canonArc` (cùng thứ tự khoá), §16.7, §14 |
+| Luật giá (`priceFeelOf`, `PRICE_RE` / `NOT_PRICE_RE` / `hasPrice`), khối sản phẩm trong prompt | §11.7; [05-lop-ai.md](05-lop-ai.md) §6.3 và §8.2; `npm run test:llm` (mục `hasPrice`, trần khối sản phẩm ở mục 14) |
 | Luồng news (`validNews`, `peekNews`, `markNewsUsed`, cap, kênh) | §8; [06-tin-tuc-thoi-su.md](06-tin-tuc-thoi-su.md); `SPEC.md` §5.9; `npm run smoke:story` (≥ 1 news_chat có thẻ tin, `markUsed` khớp) |
-| `SceneRequest`/`QData`/`SceneMeta` (thêm trường) | `types.ts` + `SPEC.md`; `Q_STR_KEYS` + `parseQ` nếu phải lưu; §2 và §13; `prompts.ts` nếu AI cần đọc trường đó |
-| `serialize()/restore()` (thêm/bớt khoá) | §13; `scripts/smoke.ts:504-508` và `smoke-story.ts:351-370` (round-trip + restore rác); tăng `v` nếu đổi nghĩa khoá cũ |
+| `SceneRequest`/`QData`/`SceneMeta` (thêm trường) | `types.ts` + `SPEC.md`; `Q_STR_KEYS` + `parseQ` nếu phải lưu; §2 và §14; `prompts.ts` nếu AI cần đọc trường đó |
+| `serialize()/restore()` (thêm/bớt khoá) | §14; `scripts/smoke.ts:504-508` và `smoke-story.ts:351-370` (round-trip + restore rác); tăng `v` nếu đổi nghĩa khoá cũ |
 | `playLine` (công thức thời lượng bong bóng) | §6.4; [07-frontend-ve-canvas.md](07-frontend-ve-canvas.md) / [08-frontend-giao-dien.md](08-frontend-giao-dien.md) (client vẽ typing theo `bubble`) |
-| `stats()` (thêm bộ đếm) | bảng §12; `scripts/smoke-story.ts` nếu test đọc khoá mới |
-| `onDayStart`/`onDayEnd` (thứ tự abort → planDay / endOfDayHr → dọn hàng đợi), `onAbortHook` (mốc 16:40) | §5.8; §9.7 nếu đổi `DEFERRABLE_TYPES`; §13 nếu đổi quan hệ với `restore`; `npm run smoke` (không ai kẹt cảnh qua đêm) và `npm run smoke:story` (`decisionsDeferred`) |
-| `COUNTED`, `watch()`, ngưỡng trong `factsOf`/`rumorSeed`/`interestOf` | §12 (bộ đếm), §3.1, §11; `serialize`/`parse` nếu đổi shape `actCounts` |
+| `stats()` (thêm bộ đếm) | bảng §13; `scripts/smoke-story.ts` nếu test đọc khoá mới |
+| `onDayStart`/`onDayEnd` (thứ tự abort → planDay / endOfDayHr → dọn hàng đợi), `onAbortHook` (mốc 16:40) | §5.8; §9.7 nếu đổi `DEFERRABLE_TYPES`; §14 nếu đổi quan hệ với `restore`; `npm run smoke` (không ai kẹt cảnh qua đêm) và `npm run smoke:story` (`decisionsDeferred`) |
+| `COUNTED`, `watch()`, ngưỡng trong `factsOf`/`rumorSeed`/`interestOf` | §13 (bộ đếm), §3.1, §12; `serialize`/`parse` nếu đổi shape `actCounts` |
 | `dBossCall` (xác suất 0.35/0.75, mốc 10:00/11:00, ngưỡng KPI 80/50) | §3.2; `SPEC.md` §5.1 hàng boss_call |
 | Biến môi trường mới cho Director | đọc qua `cfgNum/cfgBool` với khoá camelCase trong `CONFIG` **trước** env (đừng đọc thẳng `process.env` như `SHOWROOM_SCENE_MIN_MINUTES`); thêm vào `src/config.ts`, `.env.example` (chỉ tên và chú thích, không giá trị bí mật), [09-cau-hinh-du-lieu.md](09-cau-hinh-du-lieu.md) |
 
@@ -626,15 +852,26 @@ Test liên quan (xem [11-kiem-thu-qa.md](11-kiem-thu-qa.md)): `npm run smoke` (`
 5. `SPEC.md` §5.1 hàng `resign_talk` và `docs/v3-news.md:67-68, 75` còn mô tả ngưỡng cũ "mood < 25 nhiều ngày" / "lowMoodDays ≥ 3 và ghét sếp ≤ −30"; code dùng `lowMoodDays` theo `mood < 40 || stress > 70 || rel sếp ≤ −20 || warned & low` và điều kiện `lowMoodDays ≥ 2 && (rel ≤ −15 || warnings ≥ 1 || mood < 45) && 35%` (`3133, 3166-3167`). `SPEC.md` §5.6 đã cập nhật nhưng §5.1 chưa.
 6. `docs/v3-news.md:77` liệt kê `comeback` (người cũ quay lại) và `headhunt_rumor` — **chưa có trong code** (grep `src/` chỉ thấy chuỗi 'headhunt' trong một điều kiện văn bản ở `src/ai/offline.ts:4259`). Nên đánh dấu "ý tưởng chưa làm" trong [13-viec-con-lai-va-y-tuong.md](13-viec-con-lai-va-y-tuong.md).
 7. `revenueTrigger()` (`hr.ts:253-262`) có tác dụng phụ cập nhật `lastRevenueZone` dù chỉ gọi để "hỏi"; `dHrReview()` (`3193-3196`) cập nhật kỳ doanh thu ngay lúc dựng Draft (trước khi cảnh chắc chắn diễn). Chủ ý (chống đếm 2 lần) nhưng dễ gây hiểu nhầm khi debug — nếu cảnh bị huỷ/không diễn, kỳ vẫn đã tính.
-8. Sau `world.load()` thành công, `onDayStart` không được gọi (`world.ts:1066`) nên `applyDayStartStory` không chạy cho ngày đang dở (§13). Có thể là chủ ý nhưng chưa ghi ở SPEC; cần quyết định có nên gọi `applyDayStartStory` trong `restore()` khi `plannedDay === world.day()` hay không.
+8. Sau `world.load()` thành công, `onDayStart` không được gọi (`world.ts:1066`) nên `applyDayStartStory` không chạy cho ngày đang dở (§14). Có thể là chủ ý nhưng chưa ghi ở SPEC; cần quyết định có nên gọi `applyDayStartStory` trong `restore()` khi `plannedDay === world.day()` hay không.
 9. `SHOWROOM_SCENE_MIN_MINUTES` đọc thẳng `process.env` (`65-69`) thay vì qua `CONFIG` như mọi khoá khác — test truyền config giả không ghi đè được. Sàn `showrunnerEveryGameMinutes`: `config.ts:312` là 30, `director.ts:427/4228` là 20 — nên thống nhất.
-10. `offerProduct` cho `desk_visit` chỉ khi initiator là marketing (`3875`) nhưng `SCENE_DEFS.desk_visit.product = false` — registry không phản ánh ngoại lệ (SPEC §5.5 có ghi). `Draft.productFor` của `dPantry/dGroup/dLunch/dCelebration` là `{}` (không `initiatorId`) nên `preferSpeaker` rơi về marketing nếu có mặt, không thì `undefined` — thoại có thể giao câu sản phẩm cho người không hợp.
+10. `offerProduct` cho `desk_visit` chỉ khi initiator là marketing (`3978`) nhưng `SCENE_DEFS.desk_visit.product = false` — registry không phản ánh ngoại lệ (SPEC §5.5 có ghi). `Draft.productFor` của `dPantry/dGroup/dLunch/dCelebration` là `{}` (không `initiatorId`) nên `preferSpeaker` rơi về marketing nếu có mặt, không thì `undefined` — thoại có thể giao câu sản phẩm cho người không hợp.
 11. `HrDossierEntry` định nghĩa trong `scenes.ts:1472`, `hr.ts:12` import ngược từ `scenes.ts` — ràng buộc ngầm: **`scenes.ts` không được import `hr.ts`** (vòng import). `story.ts` import cả hai (một chiều, ổn).
 12. Bản đồ có đúng 10 bàn nên `open_position` thực tế chưa bao giờ chạy tới `headcount < 12`; nhánh `extraVacancy` chưa được kiểm thật ngoài smoke (cần kiểm tra khi thêm bàn).
 13. `parseQ` bỏ mọi mục `boss_catch` khi restore và kẹp `retries ≤ 5`, nhưng `deferDecisionScene` dùng 2 và `onAbortHook` dùng 3 — ba ngưỡng cho cùng trường (§9.7); nên đặt tên riêng.
-14. `stats()` trộn `counters`, `v3`, `story_*` thành một object phẳng; `hrReviews` (v3) và `hrReviewsLedger` dễ nhầm (bảng §12 là mô tả đầu tiên; chưa có test khẳng định ý nghĩa từng khoá).
+14. `stats()` trộn `counters`, `v3`, `story_*` thành một object phẳng; `hrReviews` (v3) và `hrReviewsLedger` dễ nhầm (bảng §13 là mô tả đầu tiên; chưa có test khẳng định ý nghĩa từng khoá).
 15. Chú thích đầu `hr.ts:1-7` và `docs/v3-news.md:57-59` mô tả "hiện trạng v1/v2" (luật cứng, Tú bị đánh dấu) — đọc nhanh dễ tưởng là luật đang áp dụng; nên gắn nhãn "lịch sử".
 16. `maybeInvite` của World cần quan hệ ≥ 20 để rủ nhau đi cà phê/showroom, trong khi quan hệ khởi đầu là 0 'đồng nghiệp' — vài ngày đầu `pantry_chat` tự nhiên gần như chỉ đến từ các cặp trong `INITIAL_RELATIONSHIPS`; chưa rõ là ý đồ hay cần nới (thuộc vùng World, ghi ở đây vì ảnh hưởng tần suất cảnh).
 17. Cảnh `interview` lên lịch 09:45/14:00 nhưng `requeueInterview` có thể xếp `now + 25–40` tới 15:30; World xoá ứng viên khi `endDay` — chưa thấy trường hợp phỏng vấn sau 18:00 trong smoke nhưng chưa có kiểm tra khẳng định.
 18. **Tiết kiệm token chưa làm:** `generateCandidate`/`generateRecap` chỉ kiểm `canUseLlm()` (ngân sách), không kiểm `LLM_ONLY_WHEN_WATCHED && viewers === 0` như `reserve()`/`generateBeats` (`brain.ts:245, 316, 328, 344`). Khi không ai xem, mỗi phỏng vấn vẫn tốn 1 lượt AI sinh ứng viên và mỗi cuối ngày 1 lượt bản tin. Hướng sửa: thêm điều kiện viewers vào hai hàm này trong `brain.ts` (vùng [05-lop-ai.md](05-lop-ai.md)), hoặc Director tự kiểm `llmGated()` trước `startCandidateJob`/`makeRecap` — lưu ý bản tin offline vẫn phải được tạo để `{t:'recap'}` không mất.
 19. **Cảnh HR đang diễn đúng lúc hết ngày** (§5.8): `abort(s, 'hết ngày')` (`480`) → `onAbortHook` bỏ qua vì sau 16:40 (`2649`) → không có mục hàng đợi để `deferDecisionScene` hoãn → quyết định `fire/layoff/promote` đã chốt ở hr_review mất mà không có log HR. Cần kiểm tra bằng smoke tua x10 với cảnh `firing` xếp sát giờ tan làm; hướng sửa: trong `onDayEnd`, với cảnh `DEFERRABLE_TYPES` đang diễn, dựng `QItem` tạm rồi gọi `deferDecisionScene`, hoặc cho `onAbortHook` nhận `why === 'hết ngày'` để hoãn sang mai thay vì bỏ.
+20. **(v4)** Chú thích `story.ts:578` nói bước sau của `shopping_story` "lan sang nhóm chat kín" nhưng code bước 1 là `desk_visit` b → a mode `'owner'` — sửa chú thích hoặc làm đúng như chú thích.
+21. **(v4) Tần suất chưa đo bằng AI thật:** vụ mua sắm 50 %/ngày, `buys` (vd `midnight_sale` 0,9), trần 3 lần giao/ngày, xác suất nhắc 0,5/0,8 mới chỉ chạy offline. Cần xem vài ngày trên production (thoại AI thật) xem món đồ có dày quá / lặp kiểu chuyện không; lưu ý mọi vụ dùng chung một khoá né lặp dạng `theme:<key>`.
+22. **(v4)** `productTags` còn phát tag không món nào có trong danh mục 26 món (`an-vat, ban-phim, dien-thoai, ghe, golf, karaoke, lung, massage, nang-luong, quat, sac, sep, tai-nghe, tiktok`) — vô hại (không cộng điểm), giữ cho món sau này hay dọn bớt?
+23. **(v5) Tần suất và `odds` của tình huống công ty mới chỉnh bằng mô phỏng offline** (≈ 0,6 tình huống / ngày game). Cần xem vài ngày production với thoại AI thật: có dày quá không, kết cục có quá "đẹp" không. Archive kind `beat` dòng `🧯 … chốt …` có `by: llm | offline` — đếm tỷ lệ AI chốt mã hợp lệ và phân bố phương án AI hay chọn (AI có xu hướng chọn phương án "an toàn" như xin lỗi / lắng nghe; gợi ý chống ở `VERDICT_RULES.crisis_meeting.hint`).
+24. **(v5)** Nhãn phương án, câu kết cục là chuỗi tiếng Việt cứng trong `situations.ts`; AI biên kịch viết `note` tự do nhưng chỉ được chọn trong phương án có sẵn. Muốn đa dạng hơn: cho AI đề xuất phương án thứ năm trong cuộc họp (cần hàng rào mới cho hiệu ứng) — chưa làm.
+25. **(v5)** Kết cục xấu của `market_slump` phương án d xếp `hr_review`, nhưng hàng rào HR (§9.3, cắt giảm cần doanh thu kém đủ kỳ) vẫn có thể không cắt ai — người xem có thể thấy "chuẩn bị cắt giảm" rồi không có gì. Cân nhắc câu nối trong nhóm kín, hoặc chấp nhận như "doạ cho có".
+26. **(v5)** Không có nút dev ép một tình huống cụ thể (chỉ có 🎬 cho AI biên kịch lên beat ngẫu nhiên). QA hiện dùng harness tạm (ép `director.story.accept` + `setPlan`, xem [11-kiem-thu-qa.md](11-kiem-thu-qa.md)); thêm nút cần sửa `DevEventName`, allowlist server, `labels.js` và tài liệu.
+27. **(v4)** `gift_exchange` bỏ mọi món người nhận đã có / đang chờ giao, thử người nhận khác và cuối cùng bỏ lọc `recentProducts` (§11.2) — vẫn có thể ra < 2 cặp khi rất ít người có mặt hoặc danh mục hợp vụ quá hẹp (khi đó có dòng log khép vụ). Quà đặt luôn làm "món đồ trên bàn" người nhận (món cũ được `addOwned` ghi lại vào sổ, §11.5). `ShoppingTheme.when: 'friday'` có trong kiểu nhưng chưa vụ nào dùng.
+28. **(v5)** Thoại mẫu offline của giọng `support` (`dvSupport`, `offline.ts`) nhận ra cảnh qua cụm "Mục tiêu: nói chuyện riêng, nhỏ nhẹ" trong `sitDeskVisit` / `supportGoal` và bóc "hướng đã chốt" bằng regex từ câu "… đi tới bàn X để <hướng>." (đọc `sitRaw` để giữ hoa/thường tên người) — sửa câu chữ ở `scenes.ts` thì phải sửa cả hai chỗ đó; `test:llm` mục 12c có kiểm ba kiểu (hỏi han / hướng đã chốt / thương lượng).
+30. **(v5)** "Giữ bước khi cuộc họp còn chờ / đang diễn" (`arcSceneLive`) không có trần riêng: dựa vào `until` của hàng đợi, dọn hàng đợi cuối ngày và việc mọi cảnh đều kết thúc. Chưa có test tự động cho đường "lưu giữa cuộc họp → khởi động lại → cuộc họp diễn lại → mạch không chốt dự phòng giữa chừng" (đã thử bằng tay bằng script tạm).
+29. **(v5)** `holdAges` coi ngày "không ai có mặt" là ngày nghỉ. Ở chế độ nén luôn có người nên không ảnh hưởng; ở `TIME_MODE=realtime` một ngày làm việc mà cả công ty vắng (hiếm) cũng không tính tuổi mạch — chấp nhận được, ghi lại để khỏi bất ngờ.

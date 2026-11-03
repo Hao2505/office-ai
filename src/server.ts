@@ -100,8 +100,7 @@ function readBody(req: IncomingMessage, max: number): Promise<string> {
 function handleDevCookie(req: IncomingMessage, res: ServerResponse, url: URL): void {
   if (!CONFIG.devPanel) { send(res, 404, 'Not found'); return; }
   if (req.method !== 'POST') { send(res, 405, 'Phương thức không được hỗ trợ', 'text/plain; charset=utf-8', { Allow: 'POST' }); return; }
-  const https = req.headers['x-forwarded-proto'] === 'https' || Boolean((req.socket as { encrypted?: boolean }).encrypted);
-  const attrs = `Path=/; HttpOnly; SameSite=Lax${https ? '; Secure' : ''}`;
+  const attrs = `Path=/; HttpOnly; SameSite=Lax${requestIsHttps(req) ? '; Secure' : ''}`;
   if (url.pathname === '/api/dev/logout') {
     res.writeHead(204, { 'Set-Cookie': `${DEV_COOKIE}=; ${attrs}; Max-Age=0`, 'Cache-Control': 'no-store' });
     res.end();
@@ -145,20 +144,48 @@ function computeAssetVersion(): string {
 }
 const ASSET_VERSION = existsSync(PUBLIC_ROOT) ? computeAssetVersion() : 'dev';
 const ASSET_PREFIX_RE = /^\/v\/([A-Za-z0-9]{4,40})(\/.*)$/;
-let indexCache: { mtime: number; body: Buffer } | null = null;
-/** index.html: viết lại href/src tương đối của .css/.js thành /v/<phiên bản>/… ; luôn no-cache */
+/** băm nội dung ảnh xem trước (public/og-image.jpg) → ?v= trong og:image: Facebook / Zalo chỉ tải lại ảnh khi ảnh thật sự đổi */
+const OG_VERSION = (() => {
+  try { return createHash('sha1').update(readFileSync(join(PUBLIC_ROOT, 'og-image.jpg'))).digest('hex').slice(0, 10); } catch { return '0'; }
+})();
+
+/** request tới qua https? (trực tiếp, hoặc sau nginx: X-Forwarded-Proto, sau Cloudflare: CF-Visitor) */
+function requestIsHttps(req: IncomingMessage): boolean {
+  const xfp = String(req.headers['x-forwarded-proto'] ?? '').split(',')[0].trim().toLowerCase();
+  return xfp === 'https' || String(req.headers['cf-visitor'] ?? '').includes('"https"')
+    || Boolean((req.socket as { encrypted?: boolean }).encrypted);
+}
+
+const HOST_RE = /^[a-z0-9.-]{1,253}(?::\d{1,5})?$/;
+/**
+ * Gốc URL công khai cho thẻ Open Graph / canonical (phải là URL tuyệt đối): SITE_URL nếu có, không thì suy ra từ request.
+ * Host lạ (ký tự ngoài [a-z0-9.-:]) → localhost, để không ai chèn được chuỗi tuỳ ý vào HTML qua header Host.
+ */
+function siteOrigin(req: IncomingMessage): string {
+  if (CONFIG.siteUrl) return CONFIG.siteUrl;
+  const host = String(req.headers.host ?? '').trim().toLowerCase();
+  return `${requestIsHttps(req) ? 'https' : 'http'}://${HOST_RE.test(host) ? host : `localhost:${CONFIG.port}`}`;
+}
+const escAttr = (v: string): string => v.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+
+let indexCache: { mtime: number; html: string } | null = null;
+/**
+ * index.html: viết lại href/src tương đối của .css/.js thành /v/<phiên bản>/… ; điền %OG_VERSION% (băm ảnh xem trước)
+ * và %SITE_URL% (gốc URL công khai, theo từng request); luôn no-cache.
+ */
 function sendIndexHtml(req: IncomingMessage, res: ServerResponse, file: string, mtimeMs: number): void {
   if (!indexCache || indexCache.mtime !== mtimeMs) {
-    const html = readFileSync(file, 'utf8').replace(/(href|src)="(?!https?:|data:|\/)([^"]+\.(?:css|js))"/g,
-      (_m, attr: string, path: string) => `${attr}="/v/${ASSET_VERSION}/${path}"`);
-    indexCache = { mtime: mtimeMs, body: Buffer.from(html, 'utf8') };
+    const html = readFileSync(file, 'utf8').replace(/(href|src)="(?!https?:|data:|\/|%)([^"]+\.(?:css|js))"/g,
+      (_m, attr: string, path: string) => `${attr}="/v/${ASSET_VERSION}/${path}"`).replaceAll('%OG_VERSION%', OG_VERSION);
+    indexCache = { mtime: mtimeMs, html };
   }
+  const body = Buffer.from(indexCache.html.replaceAll('%SITE_URL%', escAttr(siteOrigin(req))), 'utf8');
   res.writeHead(200, {
-    'Content-Type': 'text/html; charset=utf-8', 'Content-Length': String(indexCache.body.length),
+    'Content-Type': 'text/html; charset=utf-8', 'Content-Length': String(body.length),
     'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff',
   });
   if (req.method === 'HEAD') { res.end(); return; }
-  res.end(indexCache.body);
+  res.end(body);
 }
 
 let devIgnored = 0;

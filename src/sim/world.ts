@@ -10,9 +10,9 @@ import { getArchive as archiveSingleton, type Archive } from './archive.js';
 import { getNews } from '../news/store.js';
 import type { Config } from '../config.js';
 import { DESKS, MAP_DATA, MAP_H, MAP_W, SPOTS, WALLS, findPath, isWalkable, roomAt, type Pt } from './map.js';
-import { INITIAL_RELATIONSHIPS, INITIAL_ROSTER, ROLE_INFO } from '../content/roster.js';
+import { DESK_ITEM_TAGS, INITIAL_RELATIONSHIPS, INITIAL_ROSTER, ROLE_INFO } from '../content/roster.js';
 import { BOSS_AWAY_REASONS, PROJECT_POOL } from '../content/catalog.js';
-import { getProduct, toPublic } from '../content/products.js';
+import { getProduct, getProducts, pickProduct, toPublic } from '../content/products.js';
 import {
   ACTIONS, KPI_BOARD_STOP, LABELS, LUNCH_TO, PROJECT_ROLES, ROLE_KEYS, SALES_ROLES, bossWeights, chance, clamp,
   dirOf, facingAt, flavorFor, isActivity, isCatchable, kpiFactor, kpiRate, onCompleteRate, patrolRoute,
@@ -539,6 +539,8 @@ export class World implements WorldApi {
     for (const a of this.map.values()) if (a.role === 'hr' && a.status === 'active') return a;
     return undefined;
   }
+  /** hôm nay văn phòng đóng cửa (cuối tuần ở realtime) */
+  officeClosed(): boolean { return this.closedToday; }
   /** true khi sếp không có mặt trong văn phòng (chưa đến, đi vắng, đã về) */
   bossAway(): boolean {
     const b = this.boss();
@@ -838,6 +840,56 @@ export class World implements WorldApi {
     a.relationships[toId] = r;
   }
 
+  /** v4: đổi "món đồ trên bàn" (vừa nhận hàng / được tặng quà); id không có trong danh mục → bỏ qua */
+  setDeskItem(id: string, productId: string): void {
+    const a = this.map.get(id);
+    if (!a || typeof productId !== 'string' || a.deskItemProductId === productId) return;
+    let ok = false;
+    try { ok = !!getProduct(productId); } catch { ok = false; }
+    if (!ok) return;
+    a.deskItemProductId = productId;
+    this.agentsDirty = true;
+  }
+
+  /**
+   * v4: "món đồ trên bàn" trỏ tới sản phẩm không còn trong danh mục (chủ dự án thay bộ sản phẩm) → đổi sang món
+   * roster đặt sẵn cho người đó, không thì món hợp vai còn trống (DESK_ITEM_TAGS). Gọi sau khi dựng / khôi phục văn phòng.
+   */
+  private fixDeskItems(): void {
+    let list: { id: string }[] = [];
+    try { list = getProducts(); } catch { list = []; }
+    if (!list.length) return;
+    const valid = new Set(list.map((p) => p.id));
+    const preset = new Map<string, string>();
+    try {
+      for (const raw of INITIAL_ROSTER as unknown[]) {
+        if (isObj(raw) && typeof raw.id === 'string' && typeof raw.deskItemProductId === 'string') preset.set(raw.id, raw.deskItemProductId);
+      }
+    } catch { /* roster lỗi: chỉ dùng tag theo vai */ }
+    const taken = new Set<string>();
+    for (const a of this.map.values()) {
+      if (a.status !== 'fired' && a.deskItemProductId && valid.has(a.deskItemProductId)) taken.add(a.deskItemProductId);
+    }
+    let changed = 0;
+    for (const a of this.map.values()) {
+      if (a.status === 'fired' || (a.deskItemProductId && valid.has(a.deskItemProductId))) continue;
+      const want = preset.get(a.id);
+      let next = want && valid.has(want) && !taken.has(want) ? want : undefined;
+      if (!next) {
+        try { next = pickProduct(DESK_ITEM_TAGS[a.role] ?? [], taken)?.id; } catch { next = undefined; }
+      }
+      if (!next) continue;
+      a.deskItemProductId = next;
+      taken.add(next);
+      changed++;
+    }
+    if (changed) {
+      this.deskItemCache.clear();
+      this.agentsDirty = true;
+      console.log(`[world] Đổi "món đồ trên bàn" cho ${changed} nhân viên theo danh mục sản phẩm mới.`);
+    }
+  }
+
   addMemory(id: string, text: string): void {
     const a = this.map.get(id);
     if (!a || typeof text !== 'string') return;
@@ -1056,6 +1108,7 @@ export class World implements WorldApi {
       this.loadFailed('dữ liệu world không hợp lệ', true);
       return false;
     }
+    this.fixDeskItems(); // v4: đổi bộ sản phẩm → món đồ trên bàn cũ không còn
     if (this.director && data.director !== undefined && data.director !== null) {
       try {
         this.director.restore(data.director);
@@ -2993,6 +3046,7 @@ export class World implements WorldApi {
       if (!a || !this.map.has(r.to)) continue;
       a.relationships[r.to] = { score: Math.round(num(r.score, 0, -100, 100)), note: str(r.note, '', 120) || 'đồng nghiệp' };
     }
+    this.fixDeskItems();
 
     this.comp = {
       name: this.config.companyName,

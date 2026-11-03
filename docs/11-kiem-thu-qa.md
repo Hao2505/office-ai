@@ -1,6 +1,6 @@
 # Kiểm thử & QA
 
-> Cập nhật lần cuối: 2026-11-02 · Phạm vi: `package.json` (các script `test*`/`smoke*`/`eyeball:hr`), `tsconfig.json`, `scripts/*.ts`, `scripts/fixtures/news/`, móc QA `window.__vpa` (`public/js/main.js:3-4`), `DEBUG_PROMPTS` (`src/ai/llm.ts:279`) · Đọc khi: sắp chạy `npm test`, test đỏ không hiểu vì sao, muốn thêm kiểm tra cho router/Director, muốn thử một model AI thật, hoặc vừa sửa giao diện và cần tự duyệt bằng ảnh chụp.
+> Cập nhật lần cuối: 2026-11-03 · Phạm vi: `package.json` (các script `test*`/`smoke*`/`eyeball:hr`), `tsconfig.json`, `scripts/*.ts`, `scripts/fixtures/news/`, móc QA `window.__vpa` (`public/js/main.js:3-4`), `DEBUG_PROMPTS` (`src/ai/llm.ts:279`) · Đọc khi: sắp chạy `npm test`, test đỏ không hiểu vì sao, muốn thêm kiểm tra cho router/Director, muốn thử một model AI thật, hoặc vừa sửa giao diện và cần tự duyệt bằng ảnh chụp.
 
 Tài liệu này trả lời: **`npm test` gồm những gì và mỗi bước kiểm cái gì**, server giả lập OpenAI hoạt động ra sao, hạt giống (seed) và đồng hồ ảo được gài ở đâu, chạy riêng từng script và bật log chi tiết thế nào; cách **thử model AI thật** mà không lộ key; cách **QA hình ảnh** bằng Chrome headless qua CDP (chưa có script trong repo — mô tả cách dựng lại), đo độ mượt qua `window.__vpa`; checklist khi đổi giao diện; và khuôn mẫu để **viết test mới** cho router / Director.
 
@@ -28,9 +28,9 @@ npm run typecheck && npm run smoke && npm run smoke:story && npm run test:news &
 |---|---|---|---|---|
 | `npm run typecheck` | `tsc --noEmit` | Kiểu TypeScript của **cả `src/` và `scripts/`** (`tsconfig.json` `include: ["src", "scripts"]`) | không | vài giây |
 | `npm run smoke` | `scripts/smoke.ts` (890 dòng) | World + Director + Brain **offline** ≥ 6 ngày game: bản đồ v2, vòng ngày, cảnh/thoại, KPI, WC ẩn, phòng trưng bày, click affiliate, nút dev, serialize/restore, tính cách v3, archive, kho tin | không | ~6 s |
-| `npm run smoke:story` | `scripts/smoke-story.ts` (552 dòng) | 6 hạt giống × 12 ngày: quyết định HR qua **hàng rào kiểm lại độc lập**, thời sự kèm thẻ tin, AI biên kịch, "không ai bị đánh dấu", kịch bản doanh thu 0 | không | ~30 s |
+| `npm run smoke:story` | `scripts/smoke-story.ts` (645 dòng) | 6 hạt giống × 12 ngày: quyết định HR qua **hàng rào kiểm lại độc lập**, thời sự kèm thẻ tin, AI biên kịch, "không ai bị đánh dấu", kịch bản doanh thu 0 | không | ~30 s |
 | `npm run test:news` | `scripts/test-news.ts` (306 dòng) | Bộ đọc RSS, tiện ích văn bản/ngày, danh sách chặn, lọc tin cũ/giải trí, `NewsStore` với `fetcher` giả | không | vài giây |
-| `npm run test:llm` | `scripts/test-llm.ts` (841 dòng) | Đường AI với **1 server OpenAI giả lập**: `reserve()`, sanitize, tính tiền, lỗi HTTP, cầu dao, ngân sách, v3 (news/hr/verdict/beats), kích cỡ prompt, World+Director chế độ "GPT" | không (localhost) | vài chục giây (chờ thật ≈ 3,5 s ở mục 8 + `sleep(1)` thật mỗi 4 bước ở mục 15) |
+| `npm run test:llm` | `scripts/test-llm.ts` (915 dòng) | Đường AI với **1 server OpenAI giả lập**: `reserve()`, sanitize, tính tiền, lỗi HTTP, cầu dao, ngân sách, v3 (news/hr/verdict/beats), kích cỡ prompt, World+Director chế độ "GPT" | không (localhost) | vài chục giây (chờ thật ≈ 3,5 s ở mục 8 + `sleep(1)` thật mỗi 4 bước ở mục 15) |
 | `npm run test:router` | `scripts/test-router.ts` (847 dòng) | Router nhiều provider với **2 server giả lập** Alpha/Beta: failover, 429/quota ngày, RPM/RPD/TPD, 401/404, 500, json_schema→json_object, cầu dao, tier strong, thống kê/snapshot, cấu hình cũ, không lộ key, pace/balanced/trần token | không (localhost) | vài giây (chờ thật ≈ 5,5 s ở mục 6: 1,5 s ca Alpha treo + ~4 s ca cửa sổ bị hạn chót cắt ngắn) |
 | `npm run eyeball:hr` | `scripts/eyeball-hr.ts` (112 dòng) | **Không trong `npm test`.** Gọi AI **thật** đúng 1–3 cảnh `hr_review` để người đọc tự đánh giá thoại + `hrDecisions` | **có** (tốn quota thật) | 10–60 s tuỳ provider; thoát `0` trừ khi World mất HR/sếp (`exit 1`, §8) |
 
@@ -182,6 +182,7 @@ Ngoài ra (`:413-416`) hai lần `fire`/`layoff` trong cùng hạt phải cách 
 - Cap 3 000 000 bước (`:325`).
 - Nút dev chỉ bấm khi `!opts.slump && (verbose || seed === SEED0)` — tức hạt đầu (hoặc lượt verbose), **không** ở kịch bản doanh thu 0 — và chỉ sau khi về tốc độ x1 rồi chờ tới `minuteOfDay ≥ 600` (10:00) (`:331-333`); 2 nút (`:334-347`): `news` chờ 30 s ảo, khớp `/tin nóng|Tám chuyện thời sự|Chưa có tin|Chưa có nguồn tin|Thời sự đang tắt/` **hoặc** log `scene_start` có `news`; `showrunner` 10 s, `/Biên kịch|mạch truyện|biên kịch/`.
 - Round-trip (`:351-370`): so JSON của `story.showrunner.arcs/recentBeats`, `story.ledger`, `newsUsed`, `discussedNews`, `overtime`, `lateTomorrow`, `driftPlans` trước/sau `restore`; restore rác `{ v: 2, story: { showrunner: { arcs: [kind lạ, kind hợp lệ step 99/total 7] }, ledger: { lastFireDay: 'x' }, … } }` phải lọc còn **đúng 1 mạch**; state > 200 000 B bị ghi chú.
+- **v5 — đếm tình huống công ty** (rà soát 2026-11-03): `situationDecisions` = số log `event` icon 🧯 có chữ ` chốt: ` (chỉ dòng `afterCrisisMeeting` ghi "🧯 <chủ trì> chốt: <phương án>" sau cuộc họp — **không** tính log `scene_start` của chính cuộc họp, cũng mang icon 🧯); `situationFallbacks` = dòng 🧯 "… qua điện thoại" (chốt dự phòng khi không họp được); `situationOutcomes` = số mạch tình huống có cả `plan` lẫn `outcome`, **lấy mẫu mỗi 50 bước** qua `director.arcs()` vào tập `sitResolved` (sổ mạch chỉ giữ 8 nên đọc lúc cuối sẽ thiếu). Bản cũ đếm mọi dòng 🧯 nên vẫn xanh khi không phương án nào được chốt.
 - Kết quả gom thành `RunResult` (`:155-196`): tên người bị `fired`/`laidOff`/`resigned`/`warned` lấy từ log kind `hr` theo regex (`/đã bị cho nghỉ việc/`, `/đợt cắt giảm/`, `/xin nghỉ việc và rời/`, `/bị HR nhắc nhở KPI/`, `:395-398`) — **đổi câu chữ log HR là test đếm sai**.
 
 ### 4.6 Khẳng định (`:492-538`)
@@ -197,11 +198,16 @@ Ngoài ra (`:413-416`) hai lần `fire`/`layoff` trong cùng hạt phải cách 
 | 7 | mỗi hạt ≥ 1 `news_chat` và **mọi** news_chat có thẻ tin hợp lệ (`scene.news.id/title/url http(s)`) + ≥ 1 log `scene_start` có `news` | |
 | 8 | tin đã bàn nằm trong `news.recent()` hoặc `isUsed` | |
 | 9 | mỗi hạt ≥ 3 beat và ≥ 1 mạch kết | |
-| 10 | `arcsOpen ≤ 2`, `arcsKept ≤ 8`, `recentBeats ≤ 10`, `BEAT_KINDS.length === 17` | |
+| 10 | `arcsOpen ≤ 2`, `arcsKept ≤ 8`, `recentBeats ≤ 10`, `BEAT_KINDS.length === 28` (18 + 10 tình huống công ty v5), có `shopping_story`, **mọi `SITUATION_KINDS` nằm trong `BEAT_KINDS`** | thêm / bớt beat hay tình huống thì sửa con số này |
 | 11 | tập người bị nhắc/cho nghỉ **khác nhau giữa các hạt** | thống kê |
 | 12 | phổ nạn nhân: ≥ 3 người khi ≥ 4 lượt; không ai > 60 % khi ≥ 5 lượt | thống kê |
 | 13 | KPI trung bình theo tên (đội hình gốc): thấp nhất ≥ 70 % cao nhất | thống kê |
 | 14 | có hạt xảy ra `resign_talk` | thống kê |
+| 14b | **v5** (viết lại sau rà soát 2026-11-03, vòng 3): ≥ một nửa số hạt có ≥ 1 lần **chốt sau cuộc họp** (`situationDecisions`) **và** ≥ 1 mạch tình huống tới kết cục (`situationOutcomes`); **từng hạt: số câu chốt ≥ số cuộc họp diễn xong** (`crisis_meeting` kết thúc không bị gián đoạn). Câu chốt / câu "chốt nhanh qua điện thoại" được **đếm ngay lúc phát log** (mảng `logs` bị cắt khi quá 6000 dòng — đếm từ đó sẽ hụt khi `SMOKE_STORY_DAYS` ≳ 16). Thông tin in `<chốt>/<dự phòng>/<kết cục>/<họp xong>/<truyền lửa>` mỗi hạt | thống kê; lần đo 2026-11-03 sau vòng 3: 7–9 họp xong, mỗi họp đúng 1 câu chốt, 0 dự phòng, 7–9 kết cục, 1–3 truyền lửa / 12 ngày |
+| 14d | **v5**: tình huống không có người trong cuộc (`cast: 'none'`) không có hiệu ứng rơi vào **nhóm rỗng**: `group` chỉ hợp lệ khi phương án theo sau bằng `sales_push` / `overtime` (hoặc ở kết cục của `pep_one`, khi đã có người được nói chuyện riêng); `center` chỉ hợp lệ ở kết cục của `pep_one`; không có `group` / `center` ở bước bùng phát và hiệu ứng `now` | tĩnh trên `SITUATIONS`; bắt lỗi kiểu `market_slump` `plan_a` cũ (hiệu ứng `group` không bao giờ áp) |
+| 14e | **v5** `llmVerdictCheck()`: một World + Director riêng, `brain.generateScene` bọc lại để giả AI — `crisis_meeting` trả `source 'llm'`, `verdict 'plan_c'`; `pep_talk` trả kết quả **ngược** lựa chọn dự phòng; `story.pickPlan` bị ép chọn phương án ≠ `plan_c`; ép mạch `cash_crunch` lúc ≥ 08:35 ngày 1 (`story.schedule(…, 1e6)` để biên kịch không mở tình huống khác). Đạt khi mạch có `plan === 'plan_c'`, `planBy === 'llm'`, `pep` = kết quả AI **và không có lỗi / cảnh báo nào phát sinh trong lúc chạy kiểm tra này** (chạy sau khẳng định #1 nên phải tự gom) | không mạng (AI giả bằng cách bọc hàm); chạy ≤ 2 ngày game. Thử đột biến 2026-11-03: bỏ `plan_*` / `inspired` / `unmoved` khỏi `VERDICT_OK` trong `director.ts` → mục này đỏ ("plan plan_a (offline)") |
+| 14f | **v5** `holdAges` (đơn vị, trên `Showrunner` riêng): mạch tạo ngày 5 (thứ Sáu) + `holdAges(2)` → `createdDay` 7 và `nextAt` lùi đúng 2 × 1440; ngày 8–9 vẫn mở, rơi ở ngày `7 + ARC_MAX_AGE_DAYS + 1`; `holdAges(30)` chỉ hoãn 5 ngày | chưa có kiểm tra tự động cho đường "lưu giữa cuộc họp → khởi động lại → mạch không chốt dự phòng giữa chừng" (đã thử tay) |
+| 14c | **v5**: `SCENE_DEFS` có `crisis_meeting` và `pep_talk` | |
 | 15 | kịch bản doanh thu 0 (14 ngày): 1–2 đợt cắt giảm, không ai bị cắt khi thâm niên < 10, **không** phỏng vấn/tuyển, 0 vi phạm | |
 | 16 | có hạt **không** đuổi/cắt ai (chỉ khi World đã ngẫu nhiên hoá tính cách) | thống kê |
 | 17 | không ai kẹt cảnh > 4 phút thật | |
@@ -209,6 +215,8 @@ Ngoài ra (`:413-416`) hai lần `fire`/`layoff` trong cùng hạt phải cách 
 | 19 | round-trip OK mọi hạt | |
 | 20 | 2 nút dev có phản hồi | |
 | 21 | archive có kind `hr`, `beat`, `news` | |
+
+Ngoài khẳng định, cuối báo cáo in các dòng 🧯 của hạt đầu (`situationLogs`, ≤ 12 dòng: cảnh họp + câu chốt) để người đọc soi nhanh tình huống nào đã chạy và chốt gì.
 
 **Bẫy flaky**: các mục đánh "thống kê" phụ thuộc seed. Với seed theo giờ, một lần đỏ lẻ chưa chắc là bug — chạy lại với `SMOKE_STORY_SEED=<số in ra>`; nếu tái hiện được thì mới là bug (hoặc ngưỡng quá chặt). Không "sửa" bằng cách hạ ngưỡng nếu chưa hiểu nguyên nhân.
 
@@ -236,14 +244,14 @@ Fixture: `scripts/fixtures/news/gamek-home.xml` (39 134 B), `tuoitre-the-thao.xm
 
 - `startMock()` (`:119-142`) dựng `node:http` server nghe `127.0.0.1` ở cổng trống đầu tiên trong `4500–4599`, chỉ nhận `POST */chat/completions`, còn lại 404.
 - Mỗi request được đẩy vào `requests: Req[]` (`{ path, auth, body }`) để test soi body gửi lên (schema, `max_completion_tokens`, header `Bearer`…).
-- **Kịch bản** = hàng đợi `script: Handler[]` dùng một lần: `script.push(handler)` → request kế tiếp dùng handler đó; hết hàng đợi thì rơi về `smart` (`:73-118`) — handler "thông minh" trả lời **hợp lệ theo nhiệm vụ** đọc từ user prompt: `NHIỆM VỤ: ỨNG VIÊN` → persona mẫu; `NHIỆM VỤ: BẢN TIN` → recap mẫu; `NHIỆM VỤ: BIẾN` → beat đầu trong MENU; còn lại là cảnh: lấy id từ `speaker chỉ dùng: …`, số câu từ `N–M câu`, `hrDecisions` `none` cho mọi `- [id]` trong `HỒ SƠ NHÂN SỰ`, verdict theo chuỗi `verdict: "…"` có trong prompt. Vì vậy **sửa câu chữ prompt (`src/ai/prompts.ts`) có thể làm mock không hiểu nhiệm vụ** → mục 15 đỏ.
+- **Kịch bản** = hàng đợi `script: Handler[]` dùng một lần: `script.push(handler)` → request kế tiếp dùng handler đó; hết hàng đợi thì rơi về `smart` (`:73-118`) — handler "thông minh" trả lời **hợp lệ theo nhiệm vụ** đọc từ user prompt: `NHIỆM VỤ: ỨNG VIÊN` → persona mẫu; `NHIỆM VỤ: BẢN TIN` → recap mẫu; `NHIỆM VỤ: BIẾN` → beat đầu trong MENU; còn lại là cảnh: lấy id từ `speaker chỉ dùng: …`, số câu từ `N–M câu`, câu thứ hai `product: true` khi dòng YÊU CẦU có `đúng 1 câu product=true` (2026-11-03; trước đó mock tìm chữ `SẢN PHẨM` mà prompt v4 không còn, nên đường "AI trả câu product" không được giả lập), `hrDecisions` `none` cho mọi `- [id]` trong `HỒ SƠ NHÂN SỰ`, verdict theo chuỗi `verdict: "…"` có trong prompt (cảnh v5 `crisis_meeting` / `pep_talk` → mock trả `null`, Director dùng lựa chọn dự phòng). Vì vậy **sửa câu chữ prompt (`src/ai/prompts.ts`) có thể làm mock không hiểu nhiệm vụ** → mục 15 đỏ.
 - `completion(content, usage?)` dựng body chuẩn OpenAI; usage mặc định `prompt 1200 / completion 250 / cached 1024`.
 - Provider giả: `makeProvider({ name: 'mock', label: 'Mock', apiKey: SECRET, baseUrl: 'http://127.0.0.1:<port>/v1', model: 'gpt-4o-mini', price: { input: 0.15, cached: 0.075, output: 0.6 } })` (`:171-174`); `SECRET = 'sk-test-SECRETKEY-…'` (`:39`) để dò lộ key.
 - Cấu hình: `withProviders({ ...CONFIG, dailyBudgetUsd: 1, minSecondsBetweenLlm: 20, maxConcurrentLlm: 2, llmOnlyWhenWatched: true, persist: false, timeMode: 'compressed' }, [MOCK])` (`:175-183`); `offCfg = withProviders(baseCfg, [])` (`:184`) = offline.
 - Agent thật lấy từ một `World` offline (`seedWorld`, `:188`) để prompt/sanitize chạy trên dữ liệu thật; `makeCtx()` (`:144`) dựng `PromptContext` cố định (ngày 2, 10:15, dự án "App đặt lịch Spa Hương Sen").
 - Đồng hồ ảo `vt` tiêm qua `createBrain(cfg, { now, deadlineMs, providerTimeoutMs, quiet })`; **hạn chót và treo dùng giờ thật**. `brain` dùng chung cho mục 2–8 được tạo **một lần** ở `:223` với `deadlineMs 4000` **và** `providerTimeoutMs 3500` (chú thích `:222`: timeout riêng nhỏ hơn hạn chót để lượt treo "hết trọn cửa sổ riêng" và bị phạt, thay vì bị hạn chót cắt ngắn → không phạt).
 
-### 6.2 Mười lăm mục
+### 6.2 Mười bảy mục
 
 | # | Dòng | Mục | Khẳng định tiêu biểu (đã đối chiếu) |
 |---|---|---|---|
@@ -259,9 +267,11 @@ Fixture: `scripts/fixtures/news/gamek-home.xml` (39 134 B), `tuoitre-the-thao.xm
 | 10 | `:428` | v3 `news_chat` | prompt có thẻ `TIN`, `LUẬT TIN THẬT`, gợi ý sở thích; lưới an toàn bỏ "bị bắt"/"ngoại tình", giữ "bị bắt lười"; tóm tắt vi phạm → tóm tắt an toàn có nguồn; ký ức theo mẫu `Bàn tin "…" (nguồn)`; bỏ câu lẫn chữ Hán/Hàn/tiếng Anh nguyên câu; toàn câu ngoại ngữ → offline "không phải tiếng Việt"; `topicHint "nghe nói…"` vẫn bật lưới; offline news_chat ≥ 4 câu, nhắc tiêu đề, ≥ 30 câu khác nhau sau 12 cảnh |
 | 11 | `:546` | v3 `hr_review` | prompt có `TRẦN 1 LẦN HỌP`; hồ sơ 1 dòng/người; 8 quyết định bẩn → 5 hợp lệ; `fire`/`promote` ngoài allowed → `none` nhưng `reason` giữ dấu vết; alias "cảnh cáo" → `warn`; offline: mọi quyết định ∈ allowed, ≤ 1/người, ≤ 6; hồ sơ rỗng → `[]`; cảnh khác → `null` |
 | 12 | `:624` | v3 verdict | `resign_talk` null/lạ → `stay`; `raise_request` lạ → `denied`; `promotion` → verdict/hrDecisions null; offline promotion/layoff đúng người mở lời |
-| 13 | `:668` | v3 `generateBeats` | schema `ke_hoach_bien`, `max_completion_tokens 450`, system riêng, user bắt đầu `NHIỆM VỤ: BIẾN`, ≤ 700 token; lọc kind/tên/intensity/trùng; JSON hỏng → offline 1–2 beat; không ai xem → không gọi; menu rỗng → `[]`; hết ngân sách → offline |
-| 14 | `:735` | kích cỡ prompt | ước lượng `estimateTokens` (2,7 ký tự/token, `src/ai/prompt-budget.ts`), hệ số 0,85 cho system: news_chat 2 người ≤ 2500; news_chat 3 người ≤ `pantry3 + 450` (thẻ tin + luật; `:759`); hr_review 3 hồ sơ ≤ 2560; 8 hồ sơ ≤ 2900; resign/raise/promotion 3/layoff 3 ≤ 2500; promotion 5 ≤ standup5 + 150; layoff 4 ≤ lunch4 + 150; **mọi user prompt ≤ 2000**; beats (menu 12) ≤ 700 |
-| 15 | `:785` | World + Director chế độ "GPT" | Director nạp động (lỗi nạp → báo rõ); cấu hình ghi đè thêm `kpiWarnDays: 2, kpiFireDays: 3` (`:793`); người xem đặt qua `world.setViewers(n)` (World đẩy xuống Brain), **không** gọi `brain.setAudience` trực tiếp; 07:30 → 10:00 có ≥ 4 câu "giả lập", `calls > 0`, số request ≤ `floor(elapsed/10) + 5`; `setViewers(0)` → ≤ 1 request trong ~60 phút game; `end_day` → recap `source 'llm'`; có `status.ai.mode 'llm'`. Dùng `sleep(1)` thật mỗi 4 bước (`:805`) |
+| 12b | `:669` | **v5** `crisis_meeting` / `pep_talk` | verdict `plan_b` giữ nguyên; "Phương án C" → `plan_c`; rác → `null` (không mặc định — Director dùng dự phòng); `inspired` giữ; "chưa thuyết phục được" → `unmoved`; `null` → `null`; prompt họp có khối `PHƯƠNG ÁN (chốt đúng 1, ghi mã vào verdict): plan_a = …` và dòng `verdict: một trong "plan_a" \| "plan_b" \| "plan_c"` (**không** có `plan_d` khi không đưa ra bàn); prompt truyền lửa có `BỐI CẢNH:` + `verdict: "inspired" hoặc "unmoved"`; offline × 8: họp luôn `verdict = pick` (`plan_c`) và câu chốt nhắc đúng nhãn ("lương trễ vài ngày"), truyền lửa luôn `verdict = pick` (`unmoved`), sếp nói câu đầu, ≥ 4 câu. **Thêm sau rà soát 2026-11-03**: phủ định — "chưa xuôi" / "not moved" / **"chưa đủ thuyết phục" / "not really convinced"** → `unmoved`, "xuôi rồi" → `inspired`, resign_talk **"không nghỉ việc nữa" → `stay`**; số thứ tự — đưa phương án a, c, d mà AI trả `"2"` → `plan_c` (thứ tự trong danh sách, không phải chữ cái); **đưa a, c mà trả "3" → `plan_c`, trả "4" → `null`**; `hasPrice` bắt 13 kiểu giá ("5tr7", "1tr2", "199.000₫", "₫199.000", "1.290.000", "390k", "1,05tr", "2 triệu", "150.000đ", "390k like new", "199.000", "1290000", "2 trăm nghìn") và **không** bắt 17 cụm đếm / thông số ("2K", "4K", "27 inch", "3 tháng", "210Hz", "20.000mAh", "20k view", "1 triệu lượt xem", "10k bước", "8.000 bước", "1 đồng nghiệp", "2 củ khoai", "1tr7 view", "300 likes", "3 người xem", "12 lần", "1600 dpi") |
+| 12c | sau 12b | **thoại offline** (vòng 3, gọi `offlineScene` trực tiếp) | (1) 26 món × (cớ của món + cớ 12 vụ mua sắm + không cớ) × `pantry_chat` / `group_chat` / `celebration` (1248 cảnh, chế độ `mention`): đúng 1 câu sản phẩm, không "mới mua / xài rồi / săn được / mới chốt đơn / mới đặt / từ hồi có" (trừ khi chính cớ có chữ đó), không "hoài / quá trời / hay than / cũng vậy nè" ngoài cớ, không cụm 2 từ của tên gọi lặp lại lần 2, ≤ 200 ký tự; (2) `showroom_chat` 3 người × 4 lượt mỗi món: chế độ `showroom` không câu nào kể đã dùng ("xài thấy được", "mang cái ở nhà lên", "được một thời gian"…), chế độ `owner` người khoe có câu sản phẩm và không nói "để trong giỏ hàng hai tuần / đang tính rinh về"; (3) hỏi han riêng × 12: hướng đã chốt nói với chính người nghe (không có chữ "tú" viết thường), thương lượng có lời riêng (không an ủi, không lộ nhãn "thương lượng:"), hỏi han khi chưa có hướng thì không "mọi người bàn rồi"; (4) `crisis_meeting` 4 người (8–10 câu) và 2 người (6–8 câu) × 60: không câu "triển khai liền / lo phần của…" trước câu chốt, câu đệm của chủ trì do chủ trì nói; (5) `pep_talk` cả phòng (không xuôi) + 1:1 × 30: người nghe không nói câu đệm của người nói, không bong bóng gộp "…? Dạ, …". Thử đột biến 2026-11-03: trả `SR_DEFEND_OWNER` cho người chưa có món, đưa "mới mua" vào `PRODUCT_PARTY`, đưa `CM.ok` / `FORMAL_FILL` lại vào câu đệm → các mục tương ứng đỏ |
+| 13 | `:720` | v3 `generateBeats` | schema `ke_hoach_bien`, `max_completion_tokens 450`, system riêng, user bắt đầu `NHIỆM VỤ: BIẾN`, ≤ 700 token; lọc kind/tên/intensity/trùng; JSON hỏng → offline 1–2 beat; không ai xem → không gọi; menu rỗng → `[]`; hết ngân sách → offline |
+| 14 | `:787` | kích cỡ prompt | ước lượng `estimateTokens` (2,7 ký tự/token, `src/ai/prompt-budget.ts`), hệ số 0,85 cho system: news_chat 2 người ≤ 2500; news_chat 3 người ≤ `pantry3 + 450` (thẻ tin + luật; `:759`); hr_review 3 hồ sơ ≤ 2560; 8 hồ sơ ≤ 2900; resign/raise/promotion 3/layoff 3 ≤ 2500; promotion 5 ≤ standup5 + 150; layoff 4 ≤ lunch4 + 150; **khối sản phẩm đủ trường** (ghé bàn 2 người, chế độ `owner`, có `facts` + `avoid` + `angle` + `priceFeel`) ≤ ghé bàn 2 người + 320 (khối ≈ 290 token — thêm 2026-11-03 sau khi khối này từng phình làm gần mọi cảnh có sản phẩm vượt ngân sách); vòng 3 thêm **nhóm chat 3 người** và **phòng trưng bày 3 người** (`showroom` lẫn `owner`) cùng mức + 320 (cảnh có sản phẩm được cộng `PRODUCT_TOKEN_ALLOWANCE` 150 vào ngân sách); schema gửi đi (mục 10) phải có đủ `plan_a..plan_d`, `inspired`, `unmoved`; **mọi user prompt ≤ 2000**; beats (menu 12) ≤ 700 |
+| 15 | `:837` | World + Director chế độ "GPT" | Director nạp động (lỗi nạp → báo rõ); cấu hình ghi đè thêm `kpiWarnDays: 2, kpiFireDays: 3` (`:793`); người xem đặt qua `world.setViewers(n)` (World đẩy xuống Brain), **không** gọi `brain.setAudience` trực tiếp; 07:30 → 10:00 có ≥ 4 câu "giả lập", `calls > 0`, số request ≤ `floor(elapsed/10) + 5`; `setViewers(0)` → ≤ 1 request trong ~60 phút game; `end_day` → recap `source 'llm'`; có `status.ai.mode 'llm'`. Dùng `sleep(1)` thật mỗi 4 bước (`:805`) |
 
 Kết: `server.close()`, in `passed/total` và số request mock nhận (`:837-841`).
 
@@ -319,6 +329,23 @@ Bẫy: tốn vài lượt quota thật (Gemini 500 lượt/ngày/model theo đo 
 
 ---
 
+## 8b. `npm run share-images` — `scripts/share-images.ts` (ảnh chia sẻ, ngoài `npm test`)
+
+Tạo `public/og-image.jpg` (1200×630, ảnh xem trước khi dán link lên Facebook / Zalo / X) và `public/icon-512.png`, `icon-192.png`, `apple-touch-icon.png` (180). **Không phải test**, không có khẳng định; là script CDP duy nhất **có trong repo** (dùng `ws` + `fetch`, không dependency mới) — cách nói chuyện CDP giống §10.2.
+
+| Bước | Chi tiết |
+|---|---|
+| Chrome | `CHROME_PATH` hoặc đường dẫn thường gặp (macOS Chrome/Chromium, `/usr/bin/google-chrome*`, `/usr/bin/chromium*`, Windows); hồ sơ tạm `mkdtemp` (xoá khi xong) |
+| Chờ trang | `window.__vpa.store.map` + `agents.size > 0` (≤ 30 s) — server phải đang chạy (`--url`, mặc định `http://localhost:3000/`) |
+| Dọn khung | `body.sb-collapsed` + CSS ẩn chip / đồng hồ / chấm AI / zoom / bảng dev / gợi ý / toast / ticker — chỉ giữ bản đồ + nhãn "TRỰC TIẾP" |
+| Chờ đủ người | ≥ `--min-staff` (mặc định 7) actor có mặt **và** giờ 9:30–16:30; chưa đủ → bấm `.dev-speed[data-speed="10"]` (chỉ có khi server local không đặt `DEV_TOKEN`) tới khi đủ (≤ 300 s), rồi về x1 |
+| Phóng nhẹ | `--zoom` nấc lăn chuột (mặc định 1 ≈ ×1,3) quanh khu làm việc; đứng yên ~10 s cho camera tự theo người nói ([07](07-frontend-ve-canvas.md) §7.12) |
+| Chờ thoại | có bong bóng đã hiện ≥ 2,5 s và còn ≥ 1,5 s (≤ 40 s) |
+| Chụp | thêm băng tiêu đề "Văn Phòng Ảo" + câu giới thiệu + viên tên miền (`--label`, mặc định host của `SITE_URL`); JPEG chất lượng 88 |
+| Icon | toà nhà trắng + bong bóng "•••" trên nền cam, vẽ bằng **SVG tự viết** (không dùng emoji hệ điều hành — tránh ảnh glyph có bản quyền), mọi chi tiết trong vòng an toàn 80 % nên dùng được cho icon `maskable`; `--skip-icons` để bỏ |
+
+Chạy: `PORT=3333 PERSIST=false AI_PROVIDERS=none NEWS_ENABLED=false npm start` (offline, 0 token) rồi `npm run share-images -- --url http://localhost:3333/ --label corp.vibe-coder.fun`. Xem lại ảnh bằng mắt trước khi deploy (ảnh có người, có thoại, không lộ chip hệ thống). Sau deploy: [10](10-van-hanh-deploy.md) §7.6.
+
 ## 9. Thử model AI thật (ngoài test tự động)
 
 ### 9.1 `DEBUG_PROMPTS=1` — xem prompt và phản hồi thật
@@ -363,7 +390,7 @@ Danh sách model đã thử và loại do chủ dự án cung cấp (2026-11-01/
 
 ## 10. QA hình ảnh bằng Chrome headless qua CDP
 
-> **Trạng thái**: repo **chưa có** script QA trình duyệt. Móc đo đã có sẵn trong client: `window.__vpa = { store, actorPos }` (`public/js/main.js:3-4`, `enumerable: false`, "không chứa gì ngoài dữ liệu server đã gửi"). Phần dưới mô tả cách dựng lại bộ chụp + đo (phiên 2026-11-02 từng dùng script tạm trong scratchpad, không giữ lại). Nếu đưa vào repo, đề xuất `scripts/qa/` và **không** thêm npm dependency (SPEC §0.6): dùng `ws` (đã có) để nói chuyện CDP và `node:http` để gọi `/json/*`.
+> **Trạng thái**: repo **chưa có** script QA trình duyệt (riêng `scripts/share-images.ts` — §8b — là ví dụ CDP chạy được trong repo). Móc đo đã có sẵn trong client: `window.__vpa = { store, actorPos }` (`public/js/main.js:3-4`, `enumerable: false`, "không chứa gì ngoài dữ liệu server đã gửi"). Phần dưới mô tả cách dựng lại bộ chụp + đo (phiên 2026-11-02 từng dùng script tạm trong scratchpad, không giữ lại). Nếu đưa vào repo, đề xuất `scripts/qa/` và **không** thêm npm dependency (SPEC §0.6): dùng `ws` (đã có) để nói chuyện CDP và `node:http` để gọi `/json/*`.
 
 ### 10.1 Dựng server để QA (không tốn token, không ghi đĩa)
 
@@ -418,13 +445,13 @@ Trong cùng eval: ghi `performance.now()` mỗi rAF trong 3–5 s → mảng del
 Tiêu chuẩn chủ dự án (`docs/ui-polish-todo.md` đầu file; ghi nhớ phản hồi): **cẩn thận, trực quan, rõ, đẹp — không làm cho có**; nhân vật đủ bộ phận, nhìn ra ai là ai; **người xem thường không thấy gì về hệ thống**. Trước khi báo "xong":
 
 1. `npm run typecheck` sạch (không có test tự động cho `public/`, nên bước này không bắt lỗi JS trình duyệt — phải chạy thật).
-2. Khởi động server QA (§10.1), mở **không** có `#dev=` và **có** `#dev=qa-local`; mỗi trạng thái chụp desktop 1600×900 và mobile 390×844.
+2. Khởi động server QA (§10.1), mở **không** có `#dev=` và **có** `#dev=qa-local`; mỗi trạng thái chụp desktop 1600×900 và mobile 390×844; thêm (2026-11-03) mobile 360×740, **điện thoại xoay ngang 844×390**, tablet 1024×768 + 768×1024, desktop phóng to (1280×720 dpr 1,5; 960×540 dpr 2). Kiểm: HUD không bị cắt mép ([08](08-frontend-giao-dien.md) §4.6), chữ / bong bóng trên bản đồ không che kín bản đồ ([07](07-frontend-ve-canvas.md) §7.2), nhãn phòng có biểu tượng. Muốn có bong bóng để soi cỡ chữ: `Runtime.evaluate` đẩy thẳng một item vào `window.__vpa.store.bubbles` (`{key, speaker, name, text, icon: '', product: null, t0: performance.now(), dur: 20000}`). Kệ trưng bày nằm sát HUD khi phóng to — soi kệ bằng cách `import()` `render/furniture.js` + `render/showroom.js` trong trang rồi vẽ `buildSprites` + `drawShelfProducts` ra canvas phụ ở ~90 px/ô.
 3. Console trình duyệt không có lỗi (`Log.entryAdded` level error / `Runtime.exceptionThrown`); `store.ready === true`; `store.agents.size === 10` **ngay sau khi khởi động server QA mới** (`PERSIST=false`; đội hình gốc `INITIAL_ROSTER` 10 người gồm sếp Hùng + HR Ngọc — `src/content/roster.ts:70`); về sau có thể dao động 8–12 do nhân sự v3 (`removeAgent` khi fire/layoff/resigned, `open_position` tới `headcount < 12`) nên không dùng con số 10 làm điều kiện cứng sau ngày 1; canvas `#office` có nội dung (không trắng/đen).
 4. **Người xem thường**: `store.dev === false`; `store.status.ai` chỉ có `mode` còn mọi số = 0 và `model: ''`, `clicks: 0` (server lược bằng `publicStatus`, `src/server.ts:184-194, 462`); `#chip-ai` phải `hidden` (`public/js/ui/hud.js:184-191`); chỉ còn chấm `#ai-dot` cạnh "TRỰC TIẾP"; `#devbar.hidden === true` (`devbar.js:54`); không nhãn "AI chấp bút / template", không số bấm link, không chip "Sếp có mặt".
 5. **Admin**: `#devbar` hiện, `#chip-ai` hiện kèm popover nguồn/model/lỗi; bấm 🚪 thoát → tải lại thành người xem thường.
 6. Nhân vật: đủ tóc/mắt/mày/miệng/tay/chân/giày/phụ kiện ở zoom mặc định; nhìn nghiêng không lỗi (so với `docs/preview/bug-nhan-vat-nhin-ngang.png` và bản đã duyệt `docs/preview/v2/nhan-vat-nhin-ngang.png`); ngồi quay lưng vẫn nhận ra (`v2/ngoi-ban-quay-lung.png`); không ai nửa trong suốt (bug cũ `preview-2-chieu.png`).
 7. Bong bóng thoại vs toast: ép một toast (nút 💸 payday → "Lương về") trong lúc có cảnh đang phát, kiểm `#toasts` (giữ ≤ 3 toast, TTL 3,8–7 s — `public/js/ui/toasts.js`) không đè bong bóng — **đây là việc còn mở** (chủ dự án báo toast đôi khi đè thoại).
-8. Phòng trưng bày: 2 kệ có sản phẩm, rê chuột ra `#prod-tip`, bấm mở `/go/<id>?src=showroom` (chỉ thử trên server QA — click được đếm vào `clickStats`; tuyệt đối không bấm thử trên production).
+8. Phòng trưng bày: 2 kệ × 2 tầng có sản phẩm (26 món: làm đẹp 12, công nghệ 14 — mọi thẻ có emoji, bảng tên kệ có biểu tượng), rê chuột ra `#prod-tip`, bấm mở `/go/<id>?src=showroom` (chỉ thử trên server QA — click được đếm vào `clickStats`; tuyệt đối không bấm thử trên production).
 9. Sidebar: tay kéo `#sb-handle` (260–520 px, nhớ localStorage), `#sb-collapse` → `#ticker` hiện khi thu gọn (`sidebar.js:1-2, 87-88`), `#sb-expand` mở lại; tab Lịch sử `#history` tải `/api/history` (server QA có `HISTORY_ENABLED=false` → phải thấy trạng thái "tắt" gọn, không lỗi).
 10. Chữ tiếng Việt có dấu đầy đủ, không tràn/khuất ở mobile; HUD `#hud` không che nhân vật (`office.setInsets`).
 11. Độ mượt không thoái lui: chạy đo §10.4 trước/sau nếu đụng `store.js`/`office.js`/nhịp frame.
@@ -507,6 +534,15 @@ Quy tắc:
 - Mọi khẳng định tiếng Việt có dấu, kèm `info` đủ để debug mà không cần chạy lại (seed, ngày, tên người).
 - Không ghi ra ngoài thư mục tạm; không mạng; giữ tổng thời gian `npm test` trong tầm 1 phút.
 
+**Mẹo: soi một mạch truyện / tình huống công ty cụ thể (harness tạm, không có trong repo)** — dùng khi muốn đọc trọn thoại của một tình huống mà không chờ nó tự xảy ra. Dựng World + Director offline như khung trên trong một file **`.mts`** đặt ngoài repo (thư mục tạm; `tsx` chạy được top-level `await` với đuôi `.mts`, đuôi `.ts` ngoài `package.json` `type: module` sẽ báo lỗi "Top-level await … cjs"), rồi:
+
+1. Bước đồng hồ **phải `await new Promise((r) => setImmediate(r))` sau mỗi `world.advance(100)`** — Brain trả cảnh qua Promise; vòng lặp đồng bộ thuần thì không cảnh nào kịp phát (thấy "đã launch" mà không có dòng thoại nào).
+2. Khi tới giờ làm (ví dụ ≥ 09:40), ép mạch: `director.story.accept({ beats: [{ kind: 'faction_split', intensity: 2, note: '' }], source: 'offline' }, director.storyCtx())` (truy cập thuộc tính riêng qua `any` — chỉ trong harness). `accept` trả `[]` nếu đang có tình huống khác mở (mỗi lúc một tình huống) — chạy lại hoặc ép sớm hơn.
+3. Muốn thử một phương án cụ thể: `director.story.setPlan(arc.id, 'plan_a', 'offline')` ngay sau khi ép → cuộc họp bị bỏ (`'drop'` vì đã có phương án) và bước 3 đi thẳng nhánh của phương án đó.
+4. Bọc `director.enqueue` / `director.tryQueued` để in các mục hàng đợi có `arcId` (loại cảnh, giờ, kết quả `done/wait/drop/denied`), lọc log theo icon (🧯 📣 ⚔️ ✅ ⚠️…). Nhớ lọc theo **cả** dòng thử (`try … -> done`) — lọc chỉ theo `arcId` sẽ tưởng cảnh không chạy.
+
+Cách này không thay test: khẳng định chung vẫn nằm ở `smoke-story.ts` (mục 14b) và `test-llm.ts` (mục 12b).
+
 ---
 
 ## Khi sửa code vùng này
@@ -518,7 +554,8 @@ Quy tắc:
 | Biến môi trường của script (`SMOKE_*`, `SMOKE_STORY_*`, `EYEBALL_*`, `TEST_VERBOSE`) | §3.2, §4.2, §8, §1.3; [`09-cau-hinh-du-lieu.md`](09-cau-hinh-du-lieu.md) nếu tài liệu đó liệt kê biến test |
 | Luật hàng rào trong `src/sim/hr.ts` (`allowedActions`) | `guardOk()` trong `smoke-story.ts:112-152` **cùng commit**; §4.4 bảng; [`04-dao-dien-cau-chuyen-nhan-su.md`](04-dao-dien-cau-chuyen-nhan-su.md); chạy `npm run smoke:story` với ≥ 3 seed cố định |
 | Câu chữ log HR / toast / log sếp (regex trong smoke, smoke-story) | §3.5 phần 2, §4.5; chạy `npm run smoke` và `smoke:story` |
-| `SCENE_DEFS` (thêm/bỏ loại cảnh), `BEAT_KINDS` (hiện 17) | khẳng định #3, #10 ở §4.6; `smoke-story.ts:494, 505`; chạy `smoke:story` |
+| `SCENE_DEFS` (thêm/bỏ loại cảnh), `BEAT_KINDS` (hiện 28 = 18 + 10 tình huống v5) | khẳng định #3, #10 ở §4.6; chạy `smoke:story` |
+| Giá trị `Verdict` mới, `VERDICT_OK` (`director.ts`), cách Director nhận `verdict` của cảnh v5, câu log "🧯 … chốt: …" | khẳng định #14b (regex ` chốt: `), #14e (`llmVerdictCheck`) ở §4.6; `test-llm.ts` mục 12b; chạy `smoke:story` + `test:llm` |
 | Bản đồ `src/sim/map.ts` (SPOTS/ROOMS/FURNITURE/WALLS) | kiểm tra tĩnh `smoke.ts:108-138` (toạ độ WC (20,8),(21,8); showroom (2,3),(3,3),(1,3) / (6,3),(7,3),(8,3); cửa `WALLS[7][20|21] === 'D'`); §3.3 mục 5; `docs/v2-contract.md` §1 |
 | `data/products.json` id `son-kem-li`, `ban-phim-co` | `smoke.ts:525-529`; §1.2 |
 | Prompt (`src/ai/prompts.ts`) — chuỗi `NHIỆM VỤ:`, `speaker chỉ dùng:`, `N–M câu`, `HỒ SƠ NHÂN SỰ`, `TRẦN 1 LẦN HỌP`, `LUẬT TIN THẬT`, `verdict: "…"` | handler `smart` và các check trong `test-llm.ts` (§6.1, §6.2 mục 10–14), `taskOf/smart` trong `test-router.ts`; §12.1; chạy `npm run test:llm && npm run test:router` |
@@ -538,8 +575,9 @@ Quy tắc:
 ## Câu hỏi còn mở / cần kiểm tra
 
 - **Thời gian chạy** `npm test` chưa đo lại ngày 2026-11-02 (README ước smoke ~6 s, smoke:story ~30 s; test-llm có chờ thật ở mục 8 ≈ 3,5 s và mục 15 `sleep(1)` mỗi 4 bước; test-router ≈ 5,5 s ở mục 6 (1,5 s ca Alpha treo + ~4 s ca `b4`)). Nên đo và ghi vào §1.1.
-- **Số khẳng định** từng script chưa đếm (SPEC §10.2 ghi test-news "76 khẳng định"; smoke in `checks.length`, smoke-story `checks.length`, test-llm/test-router `passed/total`). Chạy một lần và ghi lại để phát hiện khi test bị vô tình bỏ bớt.
+- **Số khẳng định** (đếm 2026-11-03 sau rà soát vòng 3): smoke 35, smoke:story 26 (khi World đã ngẫu nhiên hoá tính cách), test:news 105, test:llm 183, test:router 171; `npm test` trọn bộ ≈ 52 s trên máy dev. SPEC §10.2 vẫn ghi test-news "76 khẳng định" (lỗi thời). Ghi lại mỗi khi thêm / bỏ khẳng định để phát hiện test bị vô tình bỏ bớt.
 - **Flaky**: các khẳng định thống kê của `smoke-story` (#11–#14, #16) với seed theo giờ — chưa có số liệu tỉ lệ đỏ oan. Cân nhắc cố định seed trong `npm test` (vd `SMOKE_STORY_SEED` mặc định cố định) và chỉ chạy seed theo giờ khi dev chủ động.
+- **Đã đo (2026-11-03): khẳng định #13 "KPI trung bình theo tên không thiên lệch" đỏ khoảng 1/3 số lần chạy** — 2/7 lô 6 hạt đỏ (hạt 674877244: Bảo 0,81 / Tú 1,25; hạt 11: Trâm 0,83 / Phát 1,34), **và bản v3 đã commit (đang chạy trên production) đỏ y hệt hai hạt đó** (Trâm 0,80 / Tú 1,30; Trâm 0,76 / Phát 1,33) → không phải lỗi mới của v4/v5; tắt hết tình huống v5 cũng không đỡ (hạt 11 còn 0,56); đổi trung bình sang trung vị cũng không đỡ → lệch **có hệ thống theo vai**, không phải một hạt xấu. Nguyên nhân đo được (đếm thời gian từng người theo hoạt động): sales có thêm KPI từ `window` (0,8) và chốt deal (+40 KPI mỗi deal, ≈ +15 % tỉ lệ) nên thường 1,15–1,3; marketing (Trâm) tính cách hay tán gẫu, đi phòng trưng bày gấp đôi người khác (5–7 % thời gian) nên thường 0,8–0,9 — tỉ lệ thấp nhất / cao nhất quanh 0,7, sát ngưỡng. Đã sửa phần chắc chắn đúng (marketing ở phòng trưng bày được tính KPI 0,8, [03](03-mo-phong-the-gioi.md) §8.1) — chưa đủ để hết đỏ. **Chưa làm:** cân bằng lại KPI sales (giảm thưởng deal hoặc hệ số cửa sổ) hay cho marketing nguồn KPI riêng — đổi luật chơi, cần chủ dự án quyết; không hạ ngưỡng 70 %. Trong lúc chờ: lô đỏ **chỉ** ở khẳng định này thì đối chiếu với bản v3 bằng `git worktree` cùng hạt trước khi kết luận.
 - **Môi trường cô lập**: smoke/smoke-story nạp `.env` thật của máy (§1.2). Cân nhắc một cờ hoặc `--env-file` rỗng để test không phụ thuộc cấu hình cục bộ (`KPI_LOW_RATIO`, `HR_REVIEW_EVERY_DAYS`, `SHOWROOM_SCENE_MIN_MINUTES`…).
 - **Không có test tự động cho `public/` và lớp HTTP/WS** (`/api/*`, `/go/:id`, `/v/<ver>/`, cookie `vpa_dev`, `publicStatus`). Script QA Chrome/CDP (§10) chưa nằm trong repo; cần quyết định có đưa vào `scripts/qa/` không và chạy ở đâu (chỉ máy dev có Chrome).
 - Nút dev trong `#devbar` không có thuộc tính `data-event` theo tên nội bộ (`payday`, `news`…), chỉ có `aria-label` tiếng Việt (§10.2 bước 5) — nếu nhãn trong `public/js/labels.js` đổi, script QA bấm nút sẽ hỏng; cân nhắc thêm `data-event="<name>"` khi dựng nút (`devbar.js:29`).

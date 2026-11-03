@@ -32,7 +32,12 @@ const nullable = (s: JsonSchema): JsonSchema => ({ anyOf: [s, { type: 'null' }] 
 export const HAIR_STYLES: Look['hairStyle'][] = ['short', 'long', 'bun', 'ponytail', 'spiky', 'bald', 'curly', 'bob'];
 export const ACCESSORIES: Look['accessory'][] = ['none', 'glasses', 'headphones', 'tie', 'cap', 'bow'];
 /** Mọi kết quả cảnh có thể có (interview: hired/rejected · resign_talk: stay/leave · raise_request: approved/denied) */
-export const VERDICTS: Verdict[] = ['hired', 'rejected', 'stay', 'leave', 'approved', 'denied'];
+/** Record đầy đủ theo union `Verdict` — thêm giá trị mới mà quên ở đây thì typecheck báo (schema enum không bị thiếu) */
+const VERDICT_ENUM: Record<Verdict, true> = {
+  hired: true, rejected: true, stay: true, leave: true, approved: true, denied: true,
+  plan_a: true, plan_b: true, plan_c: true, plan_d: true, inspired: true, unmoved: true,
+};
+export const VERDICTS = Object.keys(VERDICT_ENUM) as Verdict[];
 /** Quyết định nhân sự AI được chọn trong hr_review (code lọc lại theo `allowed` của từng người) */
 export const HR_ACTIONS: HrAction[] = [
   'warn', 'fire', 'second_chance', 'probation', 'praise', 'bonus', 'promote', 'open_position', 'layoff', 'none',
@@ -64,7 +69,7 @@ export const SCENE_SCHEMA: JsonSchema = obj({
   })),
   verdict: {
     anyOf: [{ type: 'string', enum: VERDICTS }, { type: 'null' }],
-    description: 'interview: hired|rejected · resign_talk: stay|leave · raise_request: approved|denied · cảnh khác: null',
+    description: 'interview: hired|rejected · resign_talk: stay|leave · raise_request: approved|denied · crisis_meeting: mã phương án đã chốt · pep_talk: inspired|unmoved · cảnh khác: null',
   },
   // v3: chỉ hr_review mới điền; cảnh khác null. Mỗi người trong HỒ SƠ tối đa 1 mục, action phải nằm trong "được phép" của người đó.
   hrDecisions: nullable(arr(obj({

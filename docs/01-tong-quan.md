@@ -1,6 +1,6 @@
 # Tổng quan dự án — Văn Phòng Ảo (Cty TNHH VibeCorp)
 
-> Cập nhật lần cuối: 2026-11-02 · Phạm vi: toàn dự án (`src/`, `public/`, `scripts/`, `deploy/`, `data/`, `docs/`) · Đọc khi: lần đầu vào dự án; cần định vị một tính năng nằm ở file nào; cần hiểu "vì sao" trước khi sửa bất kỳ vùng nào.
+> Cập nhật lần cuối: 2026-11-03 · Phạm vi: toàn dự án (`src/`, `public/`, `scripts/`, `deploy/`, `data/`, `docs/`) · Đọc khi: lần đầu vào dự án; cần định vị một tính năng nằm ở file nào; cần hiểu "vì sao" trước khi sửa bất kỳ vùng nào.
 
 Tài liệu này trả lời: sản phẩm là gì, người xem thấy gì, tiền đến từ đâu, chủ dự án đặt ra nguyên tắc nào và nguyên tắc đó nằm ở dòng code nào, hệ thống được ghép từ những mảnh gì và chúng nói chuyện với nhau ra sao, file nào làm việc gì, dự án đã đi qua những mốc nào, và một dev/agent mới nên đọc tiếp tài liệu nào theo vai trò của mình. Nó là **cửa vào** của bộ tài liệu trong `docs/` (mục lục có mô tả từng tài liệu, lộ trình đọc theo vai trò và bản đồ "sửa file nào → cập nhật tài liệu nào": [README.md](./README.md)); chi tiết từng vùng nằm ở các tài liệu `02`–`14` được trỏ tới ở mục 10. Hợp đồng kỹ thuật gốc vẫn là [`../SPEC.md`](../SPEC.md) (một phần đã lỗi thời, xem mục "Câu hỏi còn mở") và [`../src/types.ts`](../src/types.ts); hướng dẫn cho chủ dự án là [`../README.md`](../README.md). Tài liệu này không chép lại chúng mà chỉ dẫn tới.
 
@@ -58,7 +58,7 @@ Khung DOM tĩnh duy nhất là `public/index.html` (143 dòng); mọi nội dung
 | **Sidebar — đầu** | `.sb-head`, `#sb-handle` | Tên công ty ngắn (`shortCompanyName`), tay kéo 260–520 px (mặc định 320, nhớ `localStorage`), nút thu gọn | `ui/sidebar.js` | `hello.companyName` |
 | **Tab 💬 Trực tiếp** | `[data-panel=live]` | Thoại + sự kiện **gom theo thẻ cảnh** (icon, tiêu đề, 📍 nơi, người tham gia, đang diễn/đã xong + tóm tắt), lọc Tất cả / Văn phòng / Nhóm kín / Nhóm cty / Sự kiện; chip 🛒 sản phẩm dưới câu thoại; thẻ tin 🗞️ cho cảnh thời sự; tối đa 300 dòng (`feed.js:17`) | `ui/feed.js` | `hello.log` (≤ 200), `log`, `scene` |
 | **Tab 👥 Nhân sự** | `#staff` | Thẻ từng người: đang làm gì, KPI hôm nay (tô màu theo tiến độ ngày), ⚡😊😰, cảnh cáo, "🔥 nguy cơ bị đuổi" | `ui/staff.js` | `agents` (mỗi 2 s) |
-| **Tab 🛍️ Sản phẩm** | `#products` | 2 kệ Làm đẹp / Công nghệ, nhận xét của chủ dự án, nút "Mua trên Shopee ↗" (`src=sidebar`) | `ui/products.js` | `hello.products` |
+| **Tab 🛍️ Sản phẩm** | `#products` | 2 kệ Làm đẹp & thời trang / Công nghệ & nhà cửa, 1 câu giới thiệu (`note`) từng món, giá tham khảo, nút "Mua trên Shopee ↗" (`src=sidebar`) | `ui/products.js` | `hello.products` |
 | **Tab 📰 Bản tin** | `#recaps` | Dải **🗞️ Tin đang bàn** (5 tin thật gần nhất), mục **🗂️ Lịch sử** (`GET /api/history`, mở ra mới tải; chỉ tái hiện dòng archive `log`/`hr`/`beat`/`news`/`kpi`/`resign`, **không** có tờ báo ngày cũ — xem 5.6), và các "tờ báo" cuối ngày (tít, nhân viên của ngày, drama, bảng KPI; client giữ ≤ 14 tờ, `store.js:398`) | `ui/news.js`, `ui/history.js`, `ui/recaps.js` | `hello.news`, `recap`, HTTP |
 | **Tab 🗣️ Tin đồn** | `#rumors` | Chuỗi "tam sao thất bản": mỗi lần kể là một phiên bản, chữ mới được tô vàng | `ui/rumors.js` | `rumors` |
 | **Hồ sơ nhân viên** | `#drawer` | Chân dung, tiểu sử, trạng thái, KPI 14 ngày (sparkline), 6 thanh tính cách (có chấm "gốc" `traitBase`), quan hệ, ký ức, món đồ trên bàn (link affiliate `src=desk`), nút 📍 xem trên bản đồ | `ui/profile.js` | `agents` |
@@ -71,7 +71,7 @@ Liên kết sâu: `#tab=live|staff|products|recap|rumors`, `#filter=<kênh>`, `#
 
 ## 3. Mô hình kiếm tiền — link Shopee tiếp thị liên kết
 
-Nguồn thu duy nhất hiện tại là **click vào link affiliate Shopee** của chủ dự án. Mọi món đồ nằm trong `data/products.json` (đọc đồng bộ **một lần** lúc khởi động bởi `src/content/products.ts:129-156`; sửa file xong phải khởi động lại server). Hiện có **18 món**: 8 `lam-dep` (kệ `beauty`, slot 0–7) và 10 `cong-nghe` (kệ `tech`, slot 0–9); theo `_note` trong file, **2 món thật** (link affiliate `s.shopee.vn`) ở slot 0 mỗi kệ, 16 món còn lại là **mẫu** (link tìm kiếm Shopee). `docs/real-products.json` giữ 6 món thật của chủ dự án, trong đó **4 món còn là chỗ trống** (`san-pham-3/5/6/6b`, `name: "???"`) — việc còn mở.
+Nguồn thu duy nhất hiện tại là **click vào link affiliate Shopee** của chủ dự án. Mọi món đồ nằm trong `data/products.json` (đọc đồng bộ **một lần** lúc khởi động bởi `src/content/products.ts:129-156`; sửa file xong phải khởi động lại server). Hiện có **26 món chính thức** (từ 2026-11-03, thay 18 món cũ gồm 16 món mẫu): 12 `lam-dep` (kệ `beauty` "Làm đẹp & thời trang", slot 0–11) và 14 `cong-nghe` (kệ `tech` "Công nghệ & nhà cửa", slot 0–13), mỗi kệ vẽ 2 tầng × 7 ô; link affiliate rút gọn `s.shopee.vn`; nguồn thông tin từng món [`danh-sach-26-san-pham.md`](danh-sach-26-san-pham.md). v4: món đồ chỉ được nhắc khi có **cớ** trong câu chuyện (vụ mua sắm do sếp / HR phát động, người đã mua kể lại, hàng về khui hộp, quà bí mật), AI không bao giờ nói con số giá — xem [04-dao-dien-cau-chuyen-nhan-su.md](04-dao-dien-cau-chuyen-nhan-su.md) §11.
 
 Bốn điểm chạm, phân biệt bằng tham số `src` (`src/sim/world.ts:989`):
 
@@ -230,9 +230,9 @@ agent_office/
 │  │  ├─ showroom.ts       buildShowroomProducts() → hello.products (url luôn /go/<id>?src=showroom), phòng thủ khi content thiếu trường
 │  │  ├─ archive.ts        Archive JSONL theo ngày VN: record/flush/rotate/gzip/readDay/listDays; singleton getArchive() tắt cho tới configure
 │  │  ├─ director.ts       ĐẠO DIỄN: 2 slot cảnh, hàng đợi, cảnh tự phát, launch/playLine/finish, bắt quả tang, sự kiện, HR v3 (thi hành quyết định), thời sự, showrunner, bản tin, serialize/restore
-│  │  ├─ scenes.ts         registry SCENE_DEFS (24 loại), helper chọn người (findCoLocated, pickDeskVisit, pickGossipPair…), hàm sit* viết tình huống tiếng Việt cho prompt
+│  │  ├─ scenes.ts         registry SCENE_DEFS (26 loại; v5 thêm crisis_meeting, pep_talk), helper chọn người (findCoLocated, pickDeskVisit, pickGossipPair…), hàm sit* viết tình huống tiếng Việt cho prompt
 │  │  ├─ hr.ts             HÀNG RÀO nhân sự: allowedActions, buildDossier, validateDecisions, offlineDecisions, HrLedger, vacancy/interviewPanel
-│  │  ├─ story.ts          Showrunner (AI biên kịch): BeatRequest, accept/cleanBeat, offlinePlan, actionsFor (beat → StoryAction), sổ Arc (≤ 2 mở, ≤ 8 giữ)
+│  │  ├─ story.ts          Showrunner (AI biên kịch): BeatRequest, accept/cleanBeat, offlinePlan, actionsFor (beat → StoryAction), sổ Arc (≤ 2 mở, ≤ 8 giữ); v5: situationActions (tình huống công ty 4 bước), sitWorldOf, situationMenu
 │  │  └─ rumors.ts         RumorBook: tin đồn tam sao thất bản (≤ 12 tin, ≤ 10 phiên bản), leakCheck → đối chất
 │  ├─ ai/
 │  │  ├─ brain.ts          BỘ NÃO: reserve(), hạn chót theo task, cầu dao, ngân sách, gọi router, sanitize, LUÔN có offline/emergency; usage() cho chip AI
@@ -242,11 +242,13 @@ agent_office/
 │  │  ├─ prompt-budget.ts  2,7 ký tự/token, ngân sách prompt cảnh theo số người, 4 bậc rút gọn (SCENE_TIERS)
 │  │  ├─ schemas.ts        4 JSON schema strict tĩnh: canh_hoi_thoai, ke_hoach_bien, ho_so_ung_vien, ban_tin_ngay
 │  │  ├─ sanitize.ts       làm sạch kết quả AI → Outcome<T>; LIMITS; lưới an toàn tin thật; hàng rào hrDecisions; emergency*
-│  │  └─ offline.ts        bộ sinh thoại mẫu cho 24 loại cảnh + ứng viên + bản tin + biến (không mạng)
+│  │  └─ offline.ts        bộ sinh thoại mẫu cho 26 loại cảnh + ứng viên + bản tin + biến (không mạng)
 │  ├─ content/
-│  │  ├─ roster.ts         ROLE_INFO, INITIAL_ROSTER (10 người), INITIAL_RELATIONSHIPS (90 cặp có hướng), NAME_POOL, LOOK_POOL
+│  │  ├─ roster.ts         ROLE_INFO, INITIAL_ROSTER (10 người), INITIAL_RELATIONSHIPS (90 cặp có hướng), NAME_POOL, LOOK_POOL; v4: DESK_ITEM_TAGS (tag món đồ trên bàn theo vai)
 │  │  ├─ catalog.ts        COMPANY_INFO, PROJECT_POOL, TOPIC_SEEDS, BOSS_AWAY_REASONS, SLACK_ACTIVITIES, ACTIVITY_FLAVOR; v3: BEAT_MENU, PERSONAL_EVENTS, NEWS_INTEREST, NEWS_REACTION_SEEDS, newsBlocked, NEWS_SAFETY_RULES
-│  │  └─ products.ts       đọc data/products.json 1 lần, chuẩn hoá, pickProduct/pickShelfProduct, toPublic (→ /go/), getShowroomProducts
+│  │  ├─ products.ts       đọc data/products.json 1 lần, chuẩn hoá, pickProduct/pickShelfProduct, toPublic (→ /go/), getShowroomProducts; v4: shortNameOf, priceFeelOf, contextScore, findProductInText
+│  │  ├─ shopping.ts       v4: "vụ mua sắm" (SHOPPING_THEMES) + kiểu chuyện quanh món đồ (PRODUCT_ANGLES) — chất liệu cho Director, docs/04 §11
+│  │  └─ situations.ts     v5: 10 "tình huống công ty" (SITUATIONS: kẹt tiền, bóc phốt, chia phe, chống đối, truyền lửa…) — phương án, hiệu ứng, trọng số; docs/04 §16
 │  └─ news/
 │     ├─ feeds.ts          fetchText (10 s, 2 MB, 1 redirect, gzip/br) + parseRss (RSS 2.0/Atom tối giản) → NewsItem; isFootball gắn bong_da
 │     ├─ filter.ts         judge(): invalid/old/blocked/conduct/showbiz; BLOCKLIST, PRIVATE_LIFE, PERSON_CONDUCT, SHOWBIZ_ALLOW; so khớp ranh giới từ có/không dấu
@@ -278,7 +280,7 @@ agent_office/
 │  ├─ vps.env              BÍ MẬT (gitignored): VPS_HOST, VPS_PORT, VPS_USER, VPS_PASS, DOMAIN — không đọc, không chép
 │  └─ .env.production      BÍ MẬT (gitignored): .env dùng trên VPS — không đọc, không chép
 ├─ data/
-│  ├─ products.json        18 sản phẩm affiliate (8 lam-dep + 10 cong-nghe), _huong_dan cho chủ dự án
+│  ├─ products.json        26 sản phẩm affiliate chính thức (12 lam-dep + 14 cong-nghe), _huong_dan cho chủ dự án
 │  ├─ state.json           snapshot sống (gitignored; KHÔNG đọc) — không có trên máy dev lúc viết
 │  └─ history/             archive JSONL theo ngày (gitignored)
 └─ docs/
@@ -288,7 +290,8 @@ agent_office/
    ├─ v2-spec-notes.md     stub: đã merge vào SPEC.md 2026-11-01
    ├─ v3-news.md           thiết kế v3: thời sự an toàn, câu chuyện tự phát triển, lưu trữ dài hạn
    ├─ ui-polish-todo.md    yêu cầu làm đẹp UI của chủ dự án + trạng thái (§7 ✅, §8 deploy ✅, §9 HUD ✅)
-   ├─ real-products.json   6 sản phẩm thật chờ ghép (4 còn "???")
+   ├─ danh-sach-26-san-pham.md  thông tin 26 món chính thức (diễn giải từ trang bán) — nguồn của data/products.json
+   ├─ real-products.json   lịch sử: 6 món thật cũ chờ ghép (đã thay bằng 26 món chính thức 2026-11-03)
    └─ preview/             18 ảnh PNG duyệt giao diện (v1 + v2/)
 ```
 
@@ -303,6 +306,8 @@ agent_office/
 | **v3** — 2026-11-01 tối | Thời sự RSS (`src/news/*`, cảnh `news_chat`, thẻ tin); nhân sự **do AI quyết** + hàng rào (`hr_review`, `resign_talk`, `raise_request`, `promotion`, `layoff`); AI biên kịch (`story.ts`); tính cách ngẫu nhiên hoá + trôi; lưu trữ dài hạn JSONL + tab Lịch sử; `DEV_TOKEN` quyền dev theo socket; HUD bỏ thông tin hệ thống | `docs/v3-news.md`, `SPEC.md` §5.6–§5.9, §10; `ui-polish-todo.md` §9 |
 | **Deploy** — 2026-11-01 20:15 | Lên https://corp.vibe-coder.fun: VPS Ubuntu 24.04 dùng chung (1 vCPU, 2 GB), `/opt/vibecorp`, pm2 `vibecorp` user `deploy`, cổng 3200, nginx + Let's Encrypt (hết hạn 2027-01-30 theo ghi chú), Cloudflare proxy | `ui-polish-todo.md` §8; `deploy/deploy.sh` |
 | **2026-11-02** | **Bộ đệm chống giật**: nhân vật giật trên site thật do gói `frame` qua Cloudflare đến so le 100/300 ms (CPU server ~0 %, trình duyệt 60 fps) → server đóng dấu `ts` lên `frame`, client nội suy theo trục giờ server với bộ đệm thích ứng (`store.net.buffer`, sàn 260 ms). **Phiên bản tài nguyên tĩnh** `/v/<ASSET_VERSION>/…` vì Cloudflare ép cache 4 giờ. **Cookie admin** HttpOnly `vpa_dev` + `POST /api/dev/login|logout` + nút 🚪. **Giữ nhịp quota** (`AI_<TÊN>_PACE`), **xen kẽ nguồn** (`AI_ROUTING=balanced` + `AI_<TÊN>_WEIGHT`), trần `AI_<TÊN>_MAX_OUTPUT_TOKENS` / `MAX_REQUEST_TOKENS`, `AI_<TÊN>_EXTRA_JSON`, `AI_<TÊN>_REASONING`, **Cloudflare Workers AI** làm nguồn thứ 3. **git init** 11:55 (commit `9d1d455` "Khởi tạo … (bản 3)", 104 file; commit `0e9e925` thêm link site vào README) | `src/server.ts:123-162`, `public/js/store.js:140-202`, `src/ai/router.ts:437-483`, `README.md` §3.3/§3.5/§8, `git log` |
+| **v4** — 2026-11-03 | **26 sản phẩm chính thức** của chủ dự án thay 18 món cũ; kệ phòng trưng bày 2 tầng × 7; "chuyện mua sắm": món đồ len vào câu chuyện có cớ (12 "vụ" do sếp / HR phát động, 16 kiểu chuyện xoay vòng, hàng về → khui hộp, quà bí mật, beat `shopping_story` của AI biên kịch), AI chỉ nhận cảm nhận giá, câu có con số giá bị lọc | `src/content/shopping.ts`, [04](04-dao-dien-cau-chuyen-nhan-su.md) §11, [09](09-cau-hinh-du-lieu.md) §5, `CHANGELOG.md` |
+| **v5** — 2026-11-03 | **Tình huống công ty do AI xử lý**: 10 tình huống (kẹt tiền xoay vòng vốn, thị trường khó, khủng hoảng truyền thông, tin vui về công ty, chuyện nhà ảnh hưởng công việc, chia bè kết phái, nhân viên chống đối, sếp làm công tác tư tưởng, đối thủ câu người, nhà đầu tư ghé thăm) thành beat của AI biên kịch; cảnh mới `crisis_meeting` 🧯 (sếp / lead / HR họp, **AI chốt 1 phương án**) và `pep_talk` 📣 (truyền lửa cả phòng / nói riêng / hoà giải hai phe, AI quyết có thuyết phục được không); code quyết hậu quả bằng xác suất; mỗi lúc một tình huống, thực đơn AI ≤ 3 loại để đỡ tốn token. Cùng ngày: thẻ chia sẻ Open Graph + ảnh xem trước, chữ trên bản đồ co theo cỡ bản đồ, HUD tự co trên điện thoại | `src/content/situations.ts`, [04](04-dao-dien-cau-chuyen-nhan-su.md) §16, ADR-31 ở [12](12-quyet-dinh-thiet-ke.md), `CHANGELOG.md` |
 
 Bối cảnh do chủ dự án cung cấp (đo thật 2026-11-01, không suy ra được từ code): Gemini `gemini-3.5-flash-lite` 500 lượt/ngày/model, reset 0h Pacific (= 14h PDT / 15h PST giờ VN, `router.ts:56`); Groq free 8 000 token/phút, 200 000 token/ngày, 1 000 lượt/ngày, riêng `qwen/qwen3.8-27b` trần 1 000 token ra/phút (tên model theo `README.md:101` và [12-quyet-dinh-thiet-ke.md](./12-quyet-dinh-thiet-ke.md) ADR-10; `.env.example:32` còn ghi `qwen/qwen3-32b` — xem câu hỏi còn mở #16) → dùng `openai/gpt-oss-120b`; Cloudflare Workers AI 10 000 neuron/ngày, model `@cf/google/gemma-4-26b-a4b-it` tiếng Việt tự nhiên nhất, phải tắt thinking bằng `AI_CLOUDFLARE_EXTRA_JSON` (khối mẫu `.env.example:147-156`). Đã thử và loại: gpt-oss-20b (tiếng Việt lỗi), Qwen3-30B trên Cloudflare (nhạt), GLM-5.3-flash (không có ở gói Free), Z.ai GLM-4.7/4.5-flash (hay 429, chậm 8–29 s, tiếng Việt lủng củng), OpenRouter `:free` (50 lượt/ngày), SambaNova (20/ngày), GitHub Models (đã đóng 7/2026), Cerebras (cần thẻ). — **đã thống nhất 2026-11-02**: `.env.example` được sửa, giờ ghi `qwen/qwen3.8-27b`.
 
@@ -421,9 +426,12 @@ Nhóm theo chủ đề; chi tiết cơ chế nằm ở [03-mo-phong-the-gioi.md]
 | **candidate** | ứng viên chờ ở `CANDIDATE_WAIT`; quá 120 phút game không vào cảnh → tự rời |
 | **hr_review / hrDecisions / HrAction** | họp xét nhân sự (HR + sếp) mỗi `HR_REVIEW_EVERY_DAYS` (3) hoặc khi có lý do; AI trả 10 hành động `warn, fire, second_chance, probation, praise, bonus, promote, open_position, layoff, none`; **hai trần khác nhau**: sanitize nhận tối đa `LIMITS.maxDecisions = 6` (`sanitize.ts:28`), hàng rào thi hành tối đa `MAX_DECISIONS = 4` khác `none` mỗi cuộc họp (`hr.ts:297`, `validateDecisions`) |
 | **allowedActions / hàng rào** | danh sách hành động được phép cho từng người theo `lowStreak`, `warnings`, thâm niên, KPI 7 ngày, sổ `HrLedger` (cap đuổi 1 lần/2 ngày, thưởng/thăng chức 1 lần/7 ngày…) |
-| **verdict** | kết quả cảnh do AI quyết: `interview` hired/rejected, `resign_talk` stay/leave, `raise_request` approved/denied |
+| **verdict** | kết quả cảnh do AI quyết: `interview` hired/rejected, `resign_talk` stay/leave, `raise_request` approved/denied; v5 `crisis_meeting` = mã phương án `plan_a..plan_d`, `pep_talk` inspired/unmoved |
 | **vacancy** | vị trí trống → Director lên lịch `interview`; `extra` = mở thêm vị trí (`open_position`) |
-| **Showrunner / beat / Arc** | AI biên kịch mỗi ~2 giờ game (`SHOWRUNNER_EVERY_GAME_MINUTES`) chọn 1–3 "biến" từ `BEAT_MENU` (17 loại); mạch truyện `Arc` started → escalated → resolved, ≤ 2 mở |
+| **Showrunner / beat / Arc** | AI biên kịch mỗi ~2 giờ game (`SHOWRUNNER_EVERY_GAME_MINUTES`) chọn 1–3 "biến" từ `BEAT_MENU` (28 loại: 18 thường + 10 tình huống công ty); mạch truyện `Arc` started → escalated → resolved, ≤ 2 mở, ≤ 4 bước |
+| **Tình huống công ty (situation)** | v5: beat nặng 4 bước — bùng phát → họp xử lý (`crisis_meeting`) → triển khai theo phương án → kết cục; mỗi lúc chỉ một ([04](04-dao-dien-cau-chuyen-nhan-su.md) §16) |
+| **Phương án (plan) / chốt** | một trong 3–4 cách xử lý code đưa ra bàn (`plan_a..plan_d`, nhãn tiếng Việt); AI chốt trong cảnh họp, không chốt được thì Director dùng lựa chọn dự phòng; hậu quả do code tung xác suất theo phương án |
+| **Công tác tư tưởng (pep_talk)** | v5: sếp / HR nói chuyện để vực tinh thần hoặc thuyết phục: cả phòng (`all`), nói riêng (`one`), ngồi giữa hai phe (`mediate`); kết quả `inspired` / `unmoved` ảnh hưởng ±0,2 xác suất kết cục |
 | **RumorBook / tam sao thất bản** | mỗi lần kể tin đồn = 1 phiên bản; lộ tới tai người bị đồn (`leakCheck`) → cảnh `confront` |
 | **Channel** | `office` nói trực tiếp / `group` nhóm Zalo kín không sếp / `company` nhóm công ty có sếp |
 | **Priority** | `low / normal / high` — quyết thứ tự hàng đợi và mức "xin" AI (`reserve`) |
@@ -449,7 +457,7 @@ Nhóm theo chủ đề; chi tiết cơ chế nằm ở [03-mo-phong-the-gioi.md]
 | Thuật ngữ | Nghĩa |
 |---|---|
 | **showroom / kệ** | phòng trưng bày v2 với 2 kệ `beauty` (`lam-dep`) / `tech` (`cong-nghe`); `showroomLean` quyết thứ tự thử kệ theo người |
-| **ShowroomProduct** | sản phẩm lên kệ gửi trong `hello.products`, `url` luôn `/go/<id>?src=showroom`; `slot` 0–4 vẽ trên kệ (`SHELF_SLOTS = 5`), ≥ 5 chỉ tab 🛍️ |
+| **ShowroomProduct** | sản phẩm lên kệ gửi trong `hello.products`, `url` luôn `/go/<id>?src=showroom`; `slot` 0–13 vẽ trên kệ (v4: 2 tầng × 7, `SHELF_SLOTS = 14`), ≥ 14 chỉ tab 🛍️ |
 | **src (nguồn click)** | `showroom / sidebar / scene / desk` (lạ → `'khac'`) đếm trong `clicksBySource` |
 | **toPublic** | bản gửi client của sản phẩm: `{id, name, emoji, priceHint, url: /go/…}` — không có URL Shopee |
 
@@ -504,7 +512,7 @@ Tài liệu cũ vẫn là nguồn tham chiếu: `SPEC.md` (hợp đồng; §7, �
 | Thêm/đổi npm dependency, phiên bản Node/TypeScript | mục 6; `SPEC.md` §0.6; `deploy/deploy.sh` nếu ảnh hưởng `npm install` | `npm test`, deploy thử |
 | Hoàn thành một mốc tính năng lớn | mục 8 (lịch sử); [13-viec-con-lai-va-y-tuong.md](./13-viec-con-lai-va-y-tuong.md) | — |
 | Đặt tên khái niệm mới dùng xuyên module | mục 9 (thuật ngữ) + tài liệu vùng | — |
-| Sửa `data/products.json` hoặc ghép hàng thật từ `docs/real-products.json` | mục 3 (số lượng, món thật); `README.md` §5.1 (hiện vẫn ghi 16 món) | khởi động lại server; `npm run smoke` dùng id `son-kem-li`, `ban-phim-co` — không xoá/đổi hai id này |
+| Sửa `data/products.json` | mục 3 (số lượng); `README.md` §5.1; [09-cau-hinh-du-lieu.md](09-cau-hinh-du-lieu.md) §5.4 | khởi động lại server; `npm run smoke` (`hello.products`); id cũ `son-kem-li`/`ban-phim-co` trong `scripts/smoke.ts` chỉ dùng để đếm click, không cần có trong danh mục |
 
 Quy tắc chung: tài liệu `docs/0x-*.md` phải được sửa **cùng commit** với code; dòng `> Cập nhật lần cuối` đổi theo ngày sửa.
 
@@ -512,7 +520,7 @@ Quy tắc chung: tài liệu `docs/0x-*.md` phải được sửa **cùng commit
 
 ## Câu hỏi còn mở / cần kiểm tra
 
-1. **Tài liệu cũ lỗi thời** (đã đối chiếu code): `SPEC.md` §8 (dòng ~838–848) còn mô tả thanh trên cùng v1 và chip "🤖 GPT" cho mọi người; `SPEC.md:828` nói mã dev ở `sessionStorage['vpa.dev']` nhưng `net.js:13-28` dùng `localStorage` + cookie `vpa_dev`; `SPEC.md` §7 nói file tĩnh `no-cache` (nay `/v/<ver>/` immutable), `/api/stats` công khai (nay 404 nếu không có mã), `frame` chưa có `ts`, chưa có `/api/dev/login|logout`; `SPEC.md` §3 viết `day = floor(time/1440)+1` nhưng World giữ `curDay` riêng và chỉ nói 21:00 force-out, chưa ghi failsafe 23:00; `SPEC.md` §2 bảng nhân vật vẫn ghi Tú "first firing arc" dù đoạn dưới đã sửa theo v3; `SPEC.md` §6.2 thiếu toàn bộ phần 2026-11-02 (`AI_ROUTING=balanced`, `AI_<TÊN>_PACE/WEIGHT/REASONING/MAX_OUTPUT_TOKENS/MAX_REQUEST_TOKENS/EXTRA_JSON`, Cloudflare). `README.md:38, 272` và `SPEC.md:147` ghi "16 món mẫu (7 làm đẹp, 9 công nghệ)" — thực tế `data/products.json` có **18** (8/10) với 2 món thật. `README.md` §8 ước archive "~50 KB/ngày" — thực tế 855 KB cho 2026-11-01. `README.md` §4 ghi system prompt "~3 300 token" và prompt cảnh "~700–1 300 token" — số liệu v1; prompt cảnh nay có ngân sách tới 2 000 token (`prompt-budget.ts:23`); kích cỡ system prompt hiện tại **(cần đo lại)**. `docs/v2-contract.md` §6 còn liệt kê chip 👔 và 🤖 cho mọi người.
+1. **Tài liệu cũ lỗi thời** (đã đối chiếu code): `SPEC.md` §8 (dòng ~838–848) còn mô tả thanh trên cùng v1 và chip "🤖 GPT" cho mọi người; `SPEC.md:828` nói mã dev ở `sessionStorage['vpa.dev']` nhưng `net.js:13-28` dùng `localStorage` + cookie `vpa_dev`; `SPEC.md` §7 nói file tĩnh `no-cache` (nay `/v/<ver>/` immutable), `/api/stats` công khai (nay 404 nếu không có mã), `frame` chưa có `ts`, chưa có `/api/dev/login|logout`; `SPEC.md` §3 viết `day = floor(time/1440)+1` nhưng World giữ `curDay` riêng và chỉ nói 21:00 force-out, chưa ghi failsafe 23:00; `SPEC.md` §2 bảng nhân vật vẫn ghi Tú "first firing arc" dù đoạn dưới đã sửa theo v3; `SPEC.md` §6.2 thiếu toàn bộ phần 2026-11-02 (`AI_ROUTING=balanced`, `AI_<TÊN>_PACE/WEIGHT/REASONING/MAX_OUTPUT_TOKENS/MAX_REQUEST_TOKENS/EXTRA_JSON`, Cloudflare). ~~`README.md:38, 272` và `SPEC.md:147` ghi "16 món mẫu"~~ — 2026-11-03: README §5 đã viết lại cho 26 món chính thức; `SPEC.md` có ghi chú lỗi thời ở đầu file. `README.md` §8 ước archive "~50 KB/ngày" — thực tế 855 KB cho 2026-11-01. `README.md` §4 ghi system prompt "~3 300 token" và prompt cảnh "~700–1 300 token" — số liệu v1; prompt cảnh nay có ngân sách tới 2 000 token (`prompt-budget.ts:23`); kích cỡ system prompt hiện tại **(cần đo lại)**. `docs/v2-contract.md` §6 còn liệt kê chip 👔 và 🤖 cho mọi người.
 2. **Bối cảnh "chưa git init" đã lỗi thời**: repo đã có lịch sử commit (đẩy lên github.com/Hao2505/office-ai); không file bí mật nào bị theo dõi (đã kiểm `git ls-files` ở báo cáo khảo sát); toàn bộ `docs/01…14` mới viết đều **chưa được theo dõi** (`git status` → `??`) lúc kiểm 2026-11-02 — cần `git add docs/*.md` khi chủ dự án commit; 18 ảnh `docs/preview` (9,7 MB) nằm trong git — cân nhắc Git LFS hoặc bỏ theo dõi. Môi trường chạy tài liệu này báo "Is a git repository: false" dù `git log` chạy được **(cần kiểm tra cấu hình git của máy)**.
 3. **Việc còn mở do chủ dự án báo** (chưa tự tái hiện): toast đôi khi đè bong bóng thoại (canvas chỉ né HUD/ticker qua `setInsets`, không biết vùng `#toasts`); nút dev 🗞️ `news` bắn 2 cảnh `news_chat` liền nhau (giả thuyết: mục `force` bỏ cap `lastNewsAt` trong khi lịch `planDay` hoặc "tin len vào pantry/lunch" vẫn chạy — xem [04](./04-dao-dien-cau-chuyen-nhan-su.md)); bộ gắn nhãn bóng đá `isFootball` từng dính địa danh ("Thái Bình Dương" ↔ "Bình Dương", đã đổi sang tên CLB dài, `src/news/feeds.ts`). 4 sản phẩm thật còn là chỗ trống trong `docs/real-products.json`.
 4. **`WorldApi` thiếu các method v3** mà World có và Director đang dùng qua duck-typing `interface WorldV3` (`director.ts:94-105`): `driftTrait`, `setRole`, `removeAgent`, `setProbation`, `grantBonus`, `headcount`, `getArchive`; Director còn kiểm `w.getNews` nhưng World **không** có method này (luôn rơi về singleton — vô hại). Nên đưa vào `WorldApi` (`types.ts:531-582`) hoặc ghi rõ là mở rộng tuỳ chọn.

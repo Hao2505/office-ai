@@ -1,0 +1,5 @@
+# Văn Phòng Ảo — cho phép mọi bot đọc trang; không đi theo link tiếp thị (/go/… đếm lượt bấm) và API nội bộ
+User-agent: *
+Allow: /
+Disallow: /go/
+Disallow: /api/

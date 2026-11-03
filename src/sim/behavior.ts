@@ -113,6 +113,8 @@ export function kpiFactor(activity: Activity, role: RoleKey): number {
   switch (activity) {
     case 'working': return 1;
     case 'window': return SALES_ROLES.has(role) ? 0.8 : 0;
+    // giới thiệu sản phẩm ở phòng trưng bày là việc của marketing (như sales gọi khách bên cửa sổ); người khác ra đó là đi ngắm đồ
+    case 'showroom': return role === 'marketing' ? 0.8 : 0;
     case 'boss_office': return role === 'boss' ? 1 : 0;
     case 'server_fix': return DEV_ROLES.has(role) ? 0.5 : 0;
     default: return 0;

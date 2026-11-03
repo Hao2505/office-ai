@@ -57,7 +57,26 @@ function overlaps(a, b, pad = 4) {
  */
 const lastSlot = new Map(); // key -> tên vị trí đã chọn ở khung trước
 
-export function drawBubbles(ctx, items, vw, vh, now, compact, insets) {
+/**
+ * scale < 1: co cả lớp bong bóng (chữ, khung, đuôi, khoảng né) khi bản đồ hiện nhỏ — tính bố cục trong hệ toạ độ
+ * đã chia cho scale rồi vẽ qua ctx.scale, nên mọi hằng số px bên dưới tự co theo.
+ */
+export function drawBubbles(ctx, items, vw, vh, now, compact, insets, scale = 1) {
+  if (!(scale > 0) || Math.abs(scale - 1) < 0.01) return layoutBubbles(ctx, items, vw, vh, now, compact, insets);
+  const k = 1 / scale;
+  const sc = (v) => (typeof v === 'number' ? v * k : v);
+  const its = items.map((it) => ({ ...it, ax: sc(it.ax), ay: sc(it.ay), hy: sc(it.hy), hr: sc(it.hr), fy: sc(it.fy) }));
+  const ins = insets ? { ...insets, top: (insets.top || 0) * k, bottom: (insets.bottom || 0) * k } : insets;
+  ctx.save();
+  ctx.scale(scale, scale);
+  try {
+    return layoutBubbles(ctx, its, vw * k, vh * k, now, compact, ins);
+  } finally {
+    ctx.restore();
+  }
+}
+
+function layoutBubbles(ctx, items, vw, vh, now, compact, insets) {
   const placed = [];
   const fs = compact ? 12 : 12.5;
   const lineH = compact ? 15.5 : 16.5;

@@ -1,6 +1,6 @@
 # Bộ tài liệu kỹ thuật — Văn Phòng Ảo (Cty TNHH VibeCorp)
 
-> Cập nhật lần cuối: 2026-11-02 · Phạm vi: thư mục `docs/` (14 tài liệu `01…14`, các tài liệu thiết kế cũ, `real-products.json`, `preview/`) và các tài liệu ở gốc dự án (`README.md`, `SPEC.md`, `src/types.ts`, `CLAUDE.md`, `AGENTS.md`, `CHANGELOG.md`) · Đọc khi: lần đầu vào dự án và chưa biết đọc gì trước; cần tìm tài liệu mô tả vùng code sắp sửa; sắp thêm / đổi tên / xoá một tài liệu; cần biết tài liệu nào còn hiện hành, tài liệu nào chỉ là lịch sử.
+> Cập nhật lần cuối: 2026-11-03 · Phạm vi: thư mục `docs/` (14 tài liệu `01…14`, các tài liệu thiết kế cũ, `real-products.json`, `preview/`) và các tài liệu ở gốc dự án (`README.md`, `SPEC.md`, `src/types.ts`, `CLAUDE.md`, `AGENTS.md`, `CHANGELOG.md`) · Đọc khi: lần đầu vào dự án và chưa biết đọc gì trước; cần tìm tài liệu mô tả vùng code sắp sửa; sắp thêm / đổi tên / xoá một tài liệu; cần biết tài liệu nào còn hiện hành, tài liệu nào chỉ là lịch sử.
 
 Tài liệu này là **mục lục** của bộ tài liệu kỹ thuật: mỗi tài liệu trả lời câu hỏi gì, đọc khi nào, đọc theo thứ tự nào tuỳ vai trò, và **sửa file nào trong mã nguồn thì phải cập nhật tài liệu nào**. Nó không chép lại nội dung — chi tiết nằm ở tài liệu được trỏ tới. Người đọc: lập trình viên mới và agent AI tiếp tục phát triển dự án. Quy tắc bắt buộc "sửa code phải sửa docs" nằm ở [`../CLAUDE.md`](../CLAUDE.md) (bản cho công cụ khác: [`../AGENTS.md`](../AGENTS.md)) và chi tiết ở [14-quy-uoc-dong-gop.md](14-quy-uoc-dong-gop.md) §4; lịch sử thay đổi ở [`../CHANGELOG.md`](../CHANGELOG.md).
 
@@ -88,6 +88,7 @@ Bản rút gọn; **bảng đầy đủ và là nguồn sự thật** ở [14](1
 | `src/sim/map.ts` | [03](03-mo-phong-the-gioi.md) §3 | [07](07-frontend-ve-canvas.md) §6, §9; [v2-contract.md](v2-contract.md) §1 | `smoke` (kiểm tra tĩnh bản đồ) |
 | `src/sim/director.ts`, `scenes.ts`, `rumors.ts` | [04](04-dao-dien-cau-chuyen-nhan-su.md) | [02](02-kien-truc-va-giao-thuc.md) §4, `SPEC.md` §5 | `smoke`, `smoke:story` |
 | `src/sim/hr.ts`, `story.ts` | [04](04-dao-dien-cau-chuyen-nhan-su.md) §9–§10 | `README.md` §6, `SPEC.md` §5.6/§5.8, [12](12-quyet-dinh-thiet-ke.md) §4; `guardOk()` trong `scripts/smoke-story.ts` sửa **cùng commit** | `smoke:story` |
+| `src/content/shopping.ts`, `src/content/situations.ts` | [04](04-dao-dien-cau-chuyen-nhan-su.md) §11 (mua sắm), §16 (tình huống công ty) | `README.md` §5.2 / §6.6, [12](12-quyet-dinh-thiet-ke.md) ADR-30 / ADR-31 | `smoke:story`, `test:llm` |
 | `src/sim/archive.ts`, `data/history/` | [03](03-mo-phong-the-gioi.md) §17, [09](09-cau-hinh-du-lieu.md) §7 | [02](02-kien-truc-va-giao-thuc.md) §6, [08](08-frontend-giao-dien.md) §11 | `smoke` (phần 5e) |
 | `src/sim/showroom.ts`, `src/content/products.ts`, `data/products.json` | [09](09-cau-hinh-du-lieu.md) §5 | [01](01-tong-quan.md) §3, `README.md` §5, [07](07-frontend-ve-canvas.md) §9 | `smoke`; khởi động lại server |
 | `src/ai/*` | [05](05-lop-ai.md) | [12](12-quyet-dinh-thiet-ke.md) §3, `README.md` §3–§4, `SPEC.md` §6 | `test:llm`, `test:router` |

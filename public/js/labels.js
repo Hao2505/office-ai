@@ -164,7 +164,7 @@ export const ROOM_ICONS = {
 };
 
 /** Kệ phòng trưng bày (v2): [icon, nhãn] */
-export const SHELF_LABELS = { beauty: ['💄', 'Làm đẹp'], tech: ['🔌', 'Công nghệ'] };
+export const SHELF_LABELS = { beauty: ['💄', 'Làm đẹp & thời trang'], tech: ['🔌', 'Công nghệ & nhà cửa'] };
 
 /**
  * Tên nhà cung cấp AI đang dùng (UsageStats.activeProvider). Server cũ chỉ gửi model:
@@ -217,10 +217,11 @@ export const HAPPY_SCENES = new Set(['celebration', 'welcome', 'pingpong_match']
 export const SHOP_SCENES = new Set(['showroom_chat']);
 
 /**
- * Tông màu thẻ cảnh theo loại (v3 thêm: news 🗞️ xanh biển · hr ⚖️🚪💵 tím · gold 🎖️ vàng · layoff 📉 đỏ).
+ * Tông màu thẻ cảnh theo loại (v3 thêm: news 🗞️ xanh biển · hr ⚖️🚪💵 tím · gold 🎖️ vàng · layoff 📉 đỏ;
+ * v5: crisis 🧯 cam đất cho họp xử lý tình huống, 📣 truyền lửa dùng tông nhân sự).
  * Loại lạ -> theo kênh (office / group / company) như trước.
  */
-const SCENE_TONE = { news_chat: 'news', hr_review: 'hr', resign_talk: 'hr', raise_request: 'hr', promotion: 'gold' };
+const SCENE_TONE = { news_chat: 'news', hr_review: 'hr', resign_talk: 'hr', raise_request: 'hr', promotion: 'gold', crisis_meeting: 'crisis', pep_talk: 'hr' };
 export function sceneToneOf(type, channel) {
   if (HOT_SCENES.has(type)) return 'hot';
   if (HAPPY_SCENES.has(type)) return 'happy';
@@ -236,6 +237,9 @@ export const SCENE_DEFAULTS = {
   raise_request: ['💵', 'Xin tăng lương'],
   promotion: ['🎖️', 'Thăng chức & khen thưởng'],
   layoff: ['📉', 'Cắt giảm nhân sự'],
+  // v5: tình huống công ty
+  crisis_meeting: ['🧯', 'Họp xử lý tình huống'],
+  pep_talk: ['📣', 'Sếp truyền lửa'],
 };
 
 /** Nhóm tin thời sự (NewsCategory): [icon, nhãn] */

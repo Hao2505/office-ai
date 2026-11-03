@@ -30,7 +30,7 @@ try {
   office = mod.createOffice($('office'), {
     onPick: (id) => openProfile(id),
     onHover: (id, x, y) => showHoverTip(id, x, y),
-    onProductHover: (p, cx, cy) => showProductTip(p, cx, cy),
+    onProductHover: (p, cx, cy, pointerType) => showProductTip(p, cx, cy, pointerType),
     onProductClick: (p) => openProduct(p, 'showroom'),
     // bảng KPI / bảng trắng: chữ trên bảng nhỏ -> rê chuột có tooltip đọc được, bấm mở phần tương ứng
     onBoardHover: (kind, cx, cy) => showBoardTip(kind, cx, cy),
@@ -73,7 +73,8 @@ if (window.ResizeObserver) {
   if (hudEl) ro.observe(hudEl);
   if (tickerEl) ro.observe(tickerEl);
 }
-onSidebarToggle(() => requestAnimationFrame(syncInsets));
+// đo ngay (ticker đã ẩn/hiện xong) để resize() kế tiếp dựng khung mặc định với vùng chừa mới, rồi đo lại sau khi bố cục ổn định
+onSidebarToggle(() => { syncInsets(); requestAnimationFrame(syncInsets); });
 window.addEventListener('resize', syncInsets);
 syncInsets();
 

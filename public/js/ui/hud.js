@@ -15,6 +15,8 @@ let pop = null, chips = null, stage = null;
 let openChip = null;   // chip đang mở popover
 let pinned = false;    // mở bằng bấm: giữ tới khi bấm ra ngoài / Esc
 let closeTimer = 0;
+let lastDayText = '';
+let fitRaf = 0;
 
 export function initHud() {
   pop = $('popover');
@@ -24,8 +26,13 @@ export function initHud() {
   store.on('frame', renderClock);
   store.on('status', renderStatus);
   store.on('conn', (c) => {
-    if (c !== 'open') setText($('clock-day'), store.ready ? 'Mất kết nối…' : 'Đang kết nối…');
+    if (c !== 'open') { setText($('clock-day'), store.ready ? 'Mất kết nối…' : 'Đang kết nối…'); lastDayText = ''; scheduleFit(); }
   });
+  // HUD tự co cho vừa bề ngang khung bản đồ (đổi cỡ cửa sổ, kéo độ rộng bảng tin, xoay máy, font web tải xong)
+  window.addEventListener('resize', scheduleFit);
+  if (typeof ResizeObserver === 'function') new ResizeObserver(scheduleFit).observe(stage);
+  document.fonts?.ready?.then(scheduleFit);
+  scheduleFit();
 
   const chipOf = (t) => (t instanceof Element ? t.closest('.chip') : null);
   // chuột: rê vào mở tạm, bấm để ghim
@@ -124,7 +131,9 @@ function renderClock() {
   if (key === lastClockKey) return;
   lastClockKey = key;
   setText($('clock-time'), fmtClock(c.minute));
-  setText($('clock-day'), `${str(c.weekday, 20) || ''}${c.weekday ? ' · ' : ''}Ngày ${num(c.day, 1)}`);
+  const dayText = `${str(c.weekday, 20) || ''}${c.weekday ? ' · ' : ''}Ngày ${num(c.day, 1)}`;
+  setText($('clock-day'), dayText);
+  if (dayText !== lastDayText) { lastDayText = dayText; scheduleFit(); }
   const p = clamp((c.minute - DAY_START_MIN) / (DAY_END_MIN - DAY_START_MIN), 0, 1);
   $('clock-fill').style.width = `${(p * 100).toFixed(1)}%`;
   const sp = $('clock-speed');
@@ -177,6 +186,35 @@ function renderStatus() {
   renderAiDot(s.ai);
   renderAi(s.ai);
   if (openChip) { renderPop(); position(); }
+  scheduleFit();
+}
+
+// ---------------------------------------------------------------- co HUD cho vừa bề ngang
+// Khung hẹp (điện thoại, tablet, trình duyệt phóng to 150–200 %) mà HUD giữ cỡ màn lớn thì chip bị cắt ở mép
+// hoặc tràn sang bảng tin. Co từng nấc tới khi vừa (nấc sau giữ nấc trước, CSS .hud-fit-N trong style.css):
+// 1) bỏ chữ phụ của chip ("còn 6 ngày"); 2) bỏ chữ "Thứ … · Ngày …"; 3) thu khoảng cách + cỡ chữ;
+// 4) nhãn TRỰC TIẾP chỉ còn chấm đỏ; 5) bỏ chip người xem; 6) bỏ chip doanh thu. Còn tràn thì HUD vẫn cuộn ngang như cũ.
+const FIT_LEVELS = ['hud-fit-1', 'hud-fit-2', 'hud-fit-3', 'hud-fit-4', 'hud-fit-5', 'hud-fit-6'];
+
+function scheduleFit() {
+  if (fitRaf) return;
+  fitRaf = requestAnimationFrame(() => { fitRaf = 0; fitHud(); });
+}
+
+function fitHud() {
+  const hud = $('hud');
+  if (!hud || !chips) return;
+  const over = () => hud.scrollWidth > hud.clientWidth + 1 || chips.scrollWidth > chips.clientWidth + 1;
+  hud.classList.remove(...FIT_LEVELS);
+  for (const lv of FIT_LEVELS) {
+    if (!over()) break;
+    hud.classList.add(lv);
+  }
+  // khung bản đồ hẹp: thu nhỏ dòng gợi ý "Bấm vào nhân viên…" (style.css .stage.narrow)
+  if (stage) stage.classList.toggle('narrow', stage.clientWidth < 760);
+  // chip đang mở popover vừa bị nấc 5/6 ẩn đi (display:none) → đóng, đừng neo popover vào khung rỗng đè lên HUD
+  if (openChip && !openChip.getClientRects().length) close();
+  else if (openChip) position();
 }
 
 /** chip 🤖 AI: chỉ admin (store.dev) mới thấy — nguồn đang dùng + lượt gọi; đổi màu khi offline / chạm trần / đang dùng dự phòng */

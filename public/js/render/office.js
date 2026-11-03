@@ -5,7 +5,7 @@
 import { store, actorPos } from '../store.js';
 import { clamp, lerp, safeColor, initial as initialOf, noAccent, capFirst, str, num, fmtNum } from '../util.js';
 import { prepareWorld } from './world.js';
-import { renderFloorLayer } from './floor.js';
+import { renderFloorLayer, drawRoomLabels } from './floor.js';
 import {
   buildSprites, deskGeom, bossDeskGeom, kpiGeom, whiteboardGeom, tvGeom, rackGeom, coffeeGeom, shelfGeom, podiumGeom,
   drawChairBase, drawChairBack, steam,
@@ -17,7 +17,7 @@ import {
   tintAt, drawTint, darkness, drawLights, drawServerAlarm, drawAlarmVignette, drawFlames, drawFloatLabel, dimRoom,
 } from './fx.js';
 import { slackScreenKind, workScreenKind, bossAwayLabel } from '../labels.js';
-import { FONT, EMOJI_FONT, fillRR, rect, circle, line, fitText, makeCanvas } from './draw.js';
+import { FONT, fillRR, rect, circle, line, fitText, makeCanvas, drawEmoji } from './draw.js';
 import { sanitizeProducts, drawShelfProducts, drawPodiumProduct, shelfOfType, shelfProducts } from './showroom.js';
 
 const MAX_CACHE_SCALE = 64; // px thiết bị / ô tối đa cho layer cache
@@ -49,6 +49,7 @@ export function createOffice(canvas, hooks = {}) {
   let drag = null;
   let pinch = null;
   let charScale = DEFAULT_CHAR_SCALE;
+  let uiK = 1; // hệ số co chữ / bong bóng / biển nổi trên bản đồ (uiScale), tính lại mỗi khung
   // vùng bị HUD (mép trên) / dải ticker (mép dưới) che: bong bóng, emote né ra; bản đồ căn vào phần còn lại
   const insets = { top: 0, bottom: 0 };
   let bandTop = 0, bandBottom = 0;
@@ -59,6 +60,13 @@ export function createOffice(canvas, hooks = {}) {
   let productHits = []; // {x,y,w,h,product} toạ độ ô (kệ: cố định; bục: cập nhật mỗi khung)
   const podiumHit = { x: 0, y: 0, w: 0, h: 0, product: null };
   let hoverProduct = null;
+  // cảm ứng / bút: món đang chọn bằng chạm lần 1 { id, at, x, y } (x, y = tâm ô sản phẩm, toạ độ ô). Tự bỏ sau 8 s hoặc khi
+  // camera đổi (phóng to, kéo, về khung mặc định, đổi cỡ màn hình) — thẻ tên · giá đứng yên nên không được "lạc" khỏi món.
+  let touchSel = null;
+  let touchSelTimer = 0;
+  const TOUCH_SEL_MS = 8000;
+  const TOUCH_OPEN_GAP_MS = 350;  // chạm lần 2 nhanh hơn mức này = chạm đúp phóng to, không mở link
+  const TOUCH_SLOP_PX = 24;       // chạm lần 2 lệch ≤ 24 px quanh món đang chọn vẫn tính (ô chỉ ~7 px ở khung mặc định)
   let wcBusy = false;
   // sprite động (bảng KPI, bảng trắng): vẽ lại khi nội dung đổi
   const dyn = new Map();
@@ -89,21 +97,56 @@ export function createOffice(canvas, hooks = {}) {
   const bandH = () => Math.max(40, cssH - bandTop - bandBottom);
   const bandCy = () => bandTop + bandH() / 2;
 
+  /**
+   * "Nhà" của camera trên điện thoại (bề ngang < 640 px, người xem chưa tự kéo / phóng): mép trái cách tường ngoài 0,25 ô,
+   * ô 0 sát dưới HUD (clampCam kẹp đúng mức này) — kệ phòng trưng bày luôn thấy được. Tính theo cỡ ô và vùng chừa hiện tại.
+   */
+  function homeCam() {
+    const Tn = currentT();
+    const halfW = cssW / 2 / Tn, halfH = bandH() / 2 / Tn;
+    return { cx: halfW + 0.25, cy: halfH - 0.6, halfW, halfH };
+  }
+  const phoneHome = () => !!world && cssW < 640 && !cam.userMoved;
+  const atHome = () => { const h = homeCam(); return Math.abs(cam.cx - h.cx) < 0.05 && Math.abs(cam.cy - h.cy) < 0.05; };
+
   function maxZoom() {
     return Math.max(2.2, 40 / fitT);
   }
 
   function defaultView() {
-    // điện thoại: phóng to vừa đủ để đọc tên (≥ 13 px/ô), nhìn khu làm việc, kéo để xem chỗ khác
+    // điện thoại: phóng to vừa đủ để đọc tên (≥ 13 px/ô), kéo để xem chỗ khác
     const tall = bandH() / (world.H + 1.3);
     if (cssW < 640) {
       cam.zoom = clamp(Math.max(tall, 13) / fitT, 1, maxZoom());
-      cam.cx = world.W * 0.32;
+      // neo góc trên-trái ("nhà"): phòng trưng bày với hai kệ sản phẩm ngay dưới HUD, phòng server, WC, phòng họp, hai dãy
+      // bàn. Trước đây canh giữa theo chiều dọc nên hàng kệ (ô 1–2) nằm dưới HUD, phải kéo bản đồ mới chạm được món.
+      const h = homeCam();
+      cam.cx = h.cx;
+      cam.cy = h.cy;
+      return;
+    } else if (fitT < 10) {
+      // khung thấp mà rộng (điện thoại xoay ngang, cửa sổ thấp): xem toàn cảnh thì ô < 10 px, không đọc nổi
+      // → phóng tới ~12,5 px/ô, nhìn khu làm việc; nút ⤢ vẫn về toàn cảnh
+      cam.zoom = clamp(12.5 / fitT, 1, maxZoom());
+      cam.cx = world.W * 0.36;
     } else {
       cam.zoom = 1;
       cam.cx = world.W / 2;
     }
     cam.cy = (world.H + 0.25) / 2;
+  }
+
+  // ---------------------------------------------------------------- cỡ chữ nổi trên bản đồ
+  // Bản đồ hiện nhỏ (tablet, cửa sổ hẹp, trình duyệt phóng to 150–200 %, điện thoại xoay ngang) mà bong bóng / emote /
+  // biển / nhãn phòng vẫn giữ cỡ px của màn lớn thì che kín bản đồ → co theo cỡ ô T (T ≥ 17 px: giữ nguyên),
+  // có sàn để vẫn đọc được: màn mật độ cao (dpr ≥ 1,5) co được nhiều hơn màn dpr 1; máy cảm ứng co ít.
+  // Điện thoại (cảm ứng, cạnh ngắn < 500 px) giữ nguyên: bản đồ đã được phóng sẵn tới T ≥ 12,5–13.
+  const COARSE = typeof matchMedia === 'function' ? matchMedia('(pointer: coarse)') : null;
+  function uiScale() {
+    const coarse = !!COARSE?.matches;
+    if (coarse && Math.min(window.innerWidth, window.innerHeight) < 500) return 1;
+    const floor = coarse ? 0.82 : dpr >= 1.5 ? 0.68 : 0.8;
+    return clamp(T / 17, floor, 1);
   }
 
   function currentT() {
@@ -124,6 +167,7 @@ export function createOffice(canvas, hooks = {}) {
 
   function zoomAt(factor, sx, sy) {
     if (!world) return;
+    dropTouchSel();
     const before = toTile(sx, sy);
     cam.zoom = clamp(cam.zoom * factor, 1, maxZoom());
     T = currentT();
@@ -236,28 +280,47 @@ export function createOffice(canvas, hooks = {}) {
       const list = shelfProducts(products, shelf);
       for (let i = 0; i < list.length && i < g.slots.length; i++) {
         const sl = g.slots[i];
-        productHits.push({ x: sl.x - 0.04, y: sl.y - 0.06, w: sl.w + 0.08, h: sl.h + g.labelH + 0.3, product: list[i] });
+        productHits.push({ x: sl.x - 0.03, y: sl.y - 0.04, w: sl.w + 0.06, h: sl.h + 0.1, product: list[i] });
       }
     }
   }
 
-  function pickProduct(sx, sy) {
+  /** ô sản phẩm dưới điểm (px CSS trong canvas): { x, y, w, h, product } toạ độ ô, hoặc null */
+  function pickProductHit(sx, sy) {
     if (!world) return null;
     const t = toTile(sx, sy);
     for (let i = 0; i < productHits.length; i++) {
       const h = productHits[i];
-      if (t.x >= h.x && t.x <= h.x + h.w && t.y >= h.y && t.y <= h.y + h.h) return h.product;
+      if (t.x >= h.x && t.x <= h.x + h.w && t.y >= h.y && t.y <= h.y + h.h) return h;
     }
     const p = podiumHit;
-    if (p.product && t.x >= p.x && t.x <= p.x + p.w && t.y >= p.y && t.y <= p.y + p.h) return p.product;
+    if (p.product && t.x >= p.x && t.x <= p.x + p.w && t.y >= p.y && t.y <= p.y + p.h) return p;
     return null;
   }
+  const pickProduct = (sx, sy) => pickProductHit(sx, sy)?.product ?? null;
 
-  function setHoverProduct(p, clientX, clientY) {
+  /** pointerType: 'mouse' = rê chuột; 'touch' / 'pen' = chạm chọn (UI hiện gợi ý "chạm lần nữa", thẻ bấm được) */
+  function setHoverProduct(p, clientX, clientY, pointerType = 'mouse') {
     const changed = (p ? p.id : null) !== (hoverProduct ? hoverProduct.id : null);
     hoverProduct = p;
-    if (p || changed) hooks.onProductHover?.(p || null, clientX, clientY);
+    if (!p && touchSel) { touchSel = null; clearTimeout(touchSelTimer); }
+    if (p || changed) hooks.onProductHover?.(p || null, clientX, clientY, pointerType);
     if (changed) updateCursor();
+  }
+
+  /** chạm lần 1 vào món: chọn (quầng sáng + thẻ tên · giá), tự bỏ sau TOUCH_SEL_MS */
+  function selectTouch(hit, e) {
+    setHoverProduct(hit.product, e.clientX, e.clientY, e.pointerType || 'touch');
+    touchSel = { id: hit.product.id, at: performance.now(), x: hit.x + hit.w / 2, y: hit.y + hit.h / 2 };
+    clearTimeout(touchSelTimer);
+    touchSelTimer = setTimeout(dropTouchSel, TOUCH_SEL_MS);
+  }
+  function dropTouchSel() {
+    if (touchSel) setHoverProduct(null, 0, 0);
+  }
+  /** điểm chạm (px CSS) nằm trong TOUCH_SLOP_PX quanh tâm món đang chọn */
+  function nearTouchSel(sx, sy) {
+    return !!touchSel && Math.hypot(sx - (ox + touchSel.x * T), sy - (oy + touchSel.y * T)) <= TOUCH_SLOP_PX;
   }
 
   /** bảng KPI / bảng trắng dưới con trỏ (chữ trên bảng nhỏ -> UI hiện tooltip đọc được) */
@@ -291,10 +354,15 @@ export function createOffice(canvas, hooks = {}) {
   function setInsets(o) {
     const t = Math.max(0, num(o?.top, 0)), b = Math.max(0, num(o?.bottom, 0));
     if (t === insets.top && b === insets.bottom) return;
+    if (!world) { insets.top = t; insets.bottom = b; return; }
+    // camera điện thoại đang nằm ở "nhà" (tính theo vùng chừa CŨ) thì giữ ở "nhà" theo vùng chừa mới — kệ không lọt dưới HUD
+    const wasHome = phoneHome() && atHome();
     insets.top = t; insets.bottom = b;
-    if (!world) return;
+    // HUD / ticker đổi cỡ (HUD tự co theo nấc, chip sự cố hiện ra…) chỉ cần tính lại khung + kẹp camera — KHÔNG về góc nhìn
+    // mặc định (trên điện thoại camera đang tự theo người nói sẽ bị giật về chỗ cũ). Đổi cỡ thật đi qua resize() → defaultView.
     computeFit();
-    if (!cam.userMoved) defaultView();
+    cam.zoom = clamp(cam.zoom, 1, maxZoom());
+    if (wasHome) { const h = homeCam(); cam.cx = h.cx; cam.cy = h.cy; }
     clampCam();
     scheduleCache();
   }
@@ -321,6 +389,7 @@ export function createOffice(canvas, hooks = {}) {
     followCamera(now);
     clampCam();
     if (`${cacheScale()}` !== cacheKey && !cacheTimer) scheduleCache();
+    uiK = uiScale();
 
     const k = T * dpr;
     const minute = store.clock ? store.clock.minute : 600;
@@ -334,9 +403,12 @@ export function createOffice(canvas, hooks = {}) {
     ctx.drawImage(layer.canvas, layer.x0, layer.y0, layer.w, layer.h);
     drawWallClock(minute);
     drawEntrance(now);
-    // biển "Có người / Trống" nằm TRÊN cửa WC nhưng DƯỚI nhân vật đang đứng trước cửa
+    // nhãn phòng (px màn hình) + biển "Có người / Trống" nằm TRÊN cửa WC — cả hai DƯỚI nội thất / nhân vật
     ctx.save();
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    // nhãn phòng né biển WC (vẽ sau, nằm trên) và né nhau (floor.js bỏ nhãn đụng nhãn trước)
+    const wc = wcPill();
+    drawRoomLabels(ctx, world, T, ox, oy, uiK, wc ? [wc.avoid] : []);
     drawWcIndicator(now);
     ctx.restore();
 
@@ -412,7 +484,7 @@ export function createOffice(canvas, hooks = {}) {
     }
     if (bossAway && bossDoor) {
       const [bi, bt] = bossAwayLabel(status?.bossNote);
-      drawSign(ctx, ox + bossDoor.x * T, oy + (bossDoor.y + 0.75) * T, `${bi} ĐI VẮNG`, awayReason(bt, status?.bossNote), { hang: true, sway: true, t: now, size: clamp(T * 0.62, 10.5, 13.5), subMax: clamp(T * 9, 150, 220) });
+      drawSign(ctx, ox + bossDoor.x * T, oy + (bossDoor.y + 0.75) * T, `${bi} ĐI VẮNG`, awayReason(bt, status?.bossNote), { hang: true, sway: true, t: now, size: clamp(T * 0.62, Math.max(8.5, 10.5 * uiK), 13.5), subMax: clamp(T * 9, 150 * uiK, 220) });
     }
     drawOverlays(acts, now);
   }
@@ -579,19 +651,14 @@ export function createOffice(canvas, hooks = {}) {
         const kind = info ? deskScreenKind(d, info) : 'off';
         drawScreen(ctx, kind, g.screen, now, (f.x * 7 + f.y * 13) % 97, { wifiDown: env.wifiDown });
         const item = info?.owner?.deskItem;
-        if (item && item.emoji) {
-          ctx.font = `0.42px ${EMOJI_FONT}`;
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(String(item.emoji).slice(0, 4), g.item.x, g.item.y);
-        }
+        if (item && item.emoji) drawEmoji(ctx, String(item.emoji).slice(0, 4), g.item.x, g.item.y, 0.42);
         break;
       }
       case 'kpi_board': drawKpiBoard(f); break;
       case 'whiteboard': drawWhiteboard(f); break;
       case 'shelf_beauty': case 'shelf_tech':
-        // nhãn tên dưới thẻ chỉ vẽ khi đủ to để đọc (khi thu nhỏ chỉ thành vệt mờ)
-        if (products.length) drawShelfProducts(ctx, f, products, hoverProduct ? hoverProduct.id : null, null, { labels: T >= 34 });
+        // v4: kệ 2 tầng × 7 món, không nhãn dưới thẻ (chuột: rê xem tên + giá; cảm ứng: chạm lần 1 xem, lần 2 mở link)
+        if (products.length) drawShelfProducts(ctx, f, products, hoverProduct ? hoverProduct.id : null, null);
         break;
       case 'display_table': {
         const tmp = podiumTmp;
@@ -796,16 +863,27 @@ export function createOffice(canvas, hooks = {}) {
     ctx.lineCap = 'butt';
   }
 
-  /** biển trạng thái trên cửa WC: "Có người" (đỏ) khi có người bên trong, "Trống" (xanh) khi rảnh */
-  function drawWcIndicator(now) {
+  /** khung biển "Có người / Trống" trên cửa WC (px CSS) — dùng chung cho vẽ và cho nhãn phòng né chỗ */
+  function wcPill() {
     const d = world.wcDoor;
-    if (!d) return;
+    if (!d) return null;
     const x = ox + d.x * T, y = oy + (d.y + 0.72) * T;
     const size = clamp(T * 0.42, 8, 11);
-    ctx.save();
     ctx.font = `800 ${size}px ${FONT}`;
     const text = wcBusy ? 'Có người' : 'Trống';
     const w = ctx.measureText(text).width + size * 1.9, h = size * 1.55;
+    // vùng nhãn phòng phải né: luôn theo chữ dài nhất → nhãn không nhấp nháy theo trạng thái WC
+    const wMax = Math.max(w, ctx.measureText('Có người').width + size * 1.9);
+    return { x, y, size, text, w, h, avoid: { x: x - wMax / 2, y: y - h / 2, w: wMax, h } };
+  }
+
+  /** biển trạng thái trên cửa WC: "Có người" (đỏ) khi có người bên trong, "Trống" (xanh) khi rảnh */
+  function drawWcIndicator(now) {
+    ctx.save();
+    const pill = wcPill();
+    if (!pill) { ctx.restore(); return; }
+    const { x, y, size, text, w, h } = pill;
+    ctx.font = `800 ${size}px ${FONT}`;
     const pulse = wcBusy ? 0.85 + Math.sin(now / 300) * 0.15 : 1;
     ctx.globalAlpha = wcBusy ? 1 : 0.92;
     ctx.beginPath();
@@ -917,7 +995,7 @@ export function createOffice(canvas, hooks = {}) {
     const showNames = T >= 10.5;
     const compact = cssW < 560;
     const nameSize = clamp(T * 0.48, 9, 11.5);
-    const emoteSize = clamp(T * 1.05 * charScale, 17, 28);
+    const emoteSize = clamp(T * 1.05 * charScale, Math.max(13, 17 * uiK), 28);
     const bubbleItems = [];
     hits = [];
     const speaking = new Set();
@@ -1018,7 +1096,7 @@ export function createOffice(canvas, hooks = {}) {
       });
     }
     store.bubbles = store.bubbles.filter((b) => now - b.t0 < b.dur + 500);
-    if (bubbleItems.length) drawBubbles(ctx, bubbleItems, cssW, cssH, now, compact, insets);
+    if (bubbleItems.length) drawBubbles(ctx, bubbleItems, cssW, cssH, now, compact, insets, uiK);
   }
 
   // ---------------------------------------------------------------- camera tự theo người nói (khi đang phóng to)
@@ -1031,9 +1109,23 @@ export function createOffice(canvas, hooks = {}) {
       const a = store.actors.get(b.speaker);
       if (a && !(a.flags & FLAG_HIDDEN)) target = { x: a.x + 0.5, y: a.y };
     }
-    if (!target) return;
-    cam.cx = lerp(cam.cx, target.x, 0.025);
-    cam.cy = lerp(cam.cy, target.y - 0.5, 0.025);
+    let tx, ty;
+    if (phoneHome()) {
+      // điện thoại, người xem chưa tự kéo / phóng: "camera lười" — đứng ở "nhà" (góc trên-trái, kệ sản phẩm thấy được), chỉ
+      // dịch phải / xuống khi người đang nói sắp ra khỏi khung (chừa 3 ô), nói xong thì về lại "nhà"
+      const h = homeCam();
+      tx = target ? Math.max(h.cx, target.x + 3 - h.halfW) : h.cx;
+      ty = target ? Math.max(h.cy, target.y + 3 - h.halfH) : h.cy;
+    } else {
+      if (!target) return;
+      tx = target.x;
+      ty = target.y - 0.5;
+    }
+    const nx = lerp(cam.cx, tx, 0.025), ny = lerp(cam.cy, ty, 0.025);
+    if (Math.abs(nx - cam.cx) + Math.abs(ny - cam.cy) < 0.002) return; // đã tới nơi: không đụng tới món đang chọn
+    dropTouchSel();
+    cam.cx = nx;
+    cam.cy = ny;
   }
 
   // ---------------------------------------------------------------- input
@@ -1084,6 +1176,7 @@ export function createOffice(canvas, hooks = {}) {
     const p = localXY(e);
     if (pointers.has(e.pointerId)) pointers.set(e.pointerId, p);
     if (pinch && pointers.size >= 2) {
+      if (hoverProduct && e.pointerType !== 'mouse') setHoverProduct(null, 0, 0);
       const [a, b] = [...pointers.values()];
       const d = Math.hypot(a.x - b.x, a.y - b.y);
       const target = clamp(pinch.zoom * (d / Math.max(10, pinch.d)), 1, maxZoom());
@@ -1092,7 +1185,10 @@ export function createOffice(canvas, hooks = {}) {
     }
     if (drag) {
       const dx = p.x - drag.x, dy = p.y - drag.y;
-      if (Math.abs(dx) + Math.abs(dy) > 6) drag.moved = true;
+      if (Math.abs(dx) + Math.abs(dy) > 6) {
+        if (!drag.moved && hoverProduct && e.pointerType !== 'mouse') setHoverProduct(null, 0, 0); // kéo bản đồ → bỏ chọn món
+        drag.moved = true;
+      }
       if (drag.moved && cam.zoom > 1.01) {
         cam.cx = drag.cx - dx / T;
         cam.cy = drag.cy - dy / T;
@@ -1127,9 +1223,20 @@ export function createOffice(canvas, hooks = {}) {
     if (pointers.size < 2) pinch = null;
     if (pointers.size === 0) drag = null;
     if (wasDrag && !wasDrag.moved && e.type === 'pointerup' && world) {
-      const prod = pickProduct(p.x, p.y);
-      if (prod) hooks.onProductClick?.(prod);
-      else {
+      const touch = e.pointerType !== 'mouse';
+      let hit = pickProductHit(p.x, p.y);
+      // chạm lần 2 hơi lệch khỏi ô nhỏ xíu → vẫn là món đang chọn (không nhảy sang món bên cạnh)
+      if (touch && touchSel && hoverProduct && hit?.product.id !== touchSel.id && nearTouchSel(p.x, p.y)) hit = { product: hoverProduct };
+      const prod = hit?.product ?? null;
+      if (prod) {
+        // cảm ứng / bút: chạm lần 1 = chọn (quầng sáng + thẻ tên · giá), chạm lần 2 vào cùng món = mở Shopee (chạm quá
+        // nhanh = chạm đúp phóng to, bỏ qua). Chuột: bấm là mở như cũ (tên + giá đã hiện khi rê chuột)
+        if (!touch) hooks.onProductClick?.(prod);
+        else if (touchSel?.id === prod.id) {
+          if (performance.now() - touchSel.at >= TOUCH_OPEN_GAP_MS) hooks.onProductClick?.(prod);
+        } else if (hit.x !== undefined) selectTouch(hit, e);
+      } else {
+        if (touch && hoverProduct) setHoverProduct(null, 0, 0);
         const id = pick(p.x, p.y);
         if (id) hooks.onPick?.(id);
         else {
@@ -1165,6 +1272,7 @@ export function createOffice(canvas, hooks = {}) {
   // ---------------------------------------------------------------- API
   function fit() {
     if (!world) return;
+    dropTouchSel();
     cam.userMoved = false;
     cam.zoom = 1;
     cam.cx = world.W / 2;
@@ -1177,6 +1285,7 @@ export function createOffice(canvas, hooks = {}) {
   function focusAgent(id) {
     const a = store.actors.get(id);
     if (!a || !world) return;
+    dropTouchSel();
     if (cam.zoom < 1.6) cam.zoom = Math.min(maxZoom(), 1.8);
     cam.cx = a.x + 0.5;
     cam.cy = a.y;
@@ -1191,7 +1300,7 @@ export function createOffice(canvas, hooks = {}) {
     charScale = Number.isFinite(v) ? clamp(v, 0.6, 1.6) : DEFAULT_CHAR_SCALE;
   }
 
-  const ro = new ResizeObserver(() => { resize(); if (world) scheduleCache(); });
+  const ro = new ResizeObserver(() => { dropTouchSel(); resize(); if (world) scheduleCache(); });
   ro.observe(canvas);
   let mq = null;
   function watchDpr() {

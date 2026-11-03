@@ -7,7 +7,7 @@
 // =====================================================================
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import type { Product, ProductCategory, ProductPublic, ProductShelf, ShowroomProduct } from '../types.js';
+import type { PriceFeel, Product, ProductCategory, ProductPublic, ProductShelf, ShowroomProduct } from '../types.js';
 
 /** data/products.json, tính từ vị trí file này (src/content/ -> ../../data/) */
 const PRODUCTS_FILE = fileURLToPath(new URL('../../data/products.json', import.meta.url));
@@ -21,8 +21,9 @@ export const PRODUCT_SHELVES: readonly ProductShelf[] = ['beauty', 'tech'];
 /** kệ tương ứng với từng nhóm sản phẩm */
 export const SHELF_OF_CATEGORY: Record<ProductCategory, ProductShelf> = { 'lam-dep': 'beauty', 'cong-nghe': 'tech' };
 export const CATEGORY_OF_SHELF: Record<ProductShelf, ProductCategory> = { beauty: 'lam-dep', tech: 'cong-nghe' };
-/** Số ô sản phẩm vẽ trên mỗi kệ ở phòng trưng bày; slot ≥ SHELF_SLOTS chỉ hiện ở tab 🛍️ (client quyết định cách vẽ) */
-export const SHELF_SLOTS = 5;
+/** v4: mỗi kệ 2 tầng × 7 ô; slot 0–6 tầng trên, 7–13 tầng dưới; slot ≥ SHELF_SLOTS chỉ hiện ở tab 🛍️ (client vẽ cùng quy ước) */
+export const SHELF_PER_TIER = 7;
+export const SHELF_SLOTS = SHELF_PER_TIER * 2;
 /** tag gợi ý món thuộc kệ làm đẹp khi thiếu category */
 const BEAUTY_TAGS = new Set(['lam-dep', 'my-pham', 'thoi-trang', 'massage', 'skincare', 'son', 'toc', 'spa']);
 
@@ -83,7 +84,17 @@ function normalize(raw: unknown, index: number, seen: Set<string>): Product | st
   const slot = parseSlot(r.slot);
   if (r.slot !== undefined && slot < 0) console.warn(`[products] "${id}": slot "${String(r.slot)}" không hợp lệ (số nguyên ≥ 0) → tự xếp`);
   const note = str(r.note).replace(/\s+/g, ' ').slice(0, 200);
-  if (!note) console.warn(`[products] "${id}": thiếu note (1 câu nhận xét của bạn để nhân vật khoe ở phòng trưng bày)`);
+  if (!note) console.warn(`[products] "${id}": thiếu note (1 câu giới thiệu hiện ở tab 🛍️)`);
+  // v4: chất liệu cho "chuyện" quanh món đồ (AI đọc; client không cần)
+  const one = (v: unknown, max: number): string => str(v).replace(/\s+/g, ' ').slice(0, max);
+  const short = one(r.short, 40);
+  const spoken = one(r.spoken, 60).replace(/[.!…]+$/u, '');
+  const facts = one(r.facts, 300);
+  const avoid = one(r.avoid, 240);
+  const hooks = Array.isArray(r.hooks)
+    ? [...new Set(r.hooks.map((h) => one(h, 100).replace(/[.!…]+$/u, '')).filter(Boolean))].slice(0, 5)
+    : [];
+  if (!hooks.length) console.warn(`[products] "${id}": thiếu hooks (cớ đời thường để món được nhắc tự nhiên)`);
   const image = str(r.image);
   if (image && !validUrl(image)) console.warn(`[products] "${id}": image không phải URL http/https → bỏ qua ảnh`);
 
@@ -100,6 +111,11 @@ function normalize(raw: unknown, index: number, seen: Set<string>): Product | st
     slot,
     note,
     ...(image && validUrl(image) ? { image } : {}),
+    ...(short ? { short } : {}),
+    ...(spoken ? { spoken } : {}),
+    ...(facts ? { facts } : {}),
+    ...(avoid ? { avoid } : {}),
+    ...(hooks.length ? { hooks } : {}),
   };
 }
 
@@ -240,4 +256,75 @@ export function getShowroomProducts(): ShowroomProduct[] {
       return item;
     })
     .sort((a, b) => order[a.shelf] - order[b.shelf] || a.slot - b.slot || a.name.localeCompare(b.name, 'vi'));
+}
+
+// ---------------------------------------------------------------- v4: chuyện quanh món đồ
+const UNIT_RE = /^(inch|ml|mah|cm|kg|gb|tb|hz|w|k)$/i;
+
+/** Tên gọi đời thường: `short` nếu có; không thì bỏ phần thông số / mã model sau từ đầu tiên */
+export function shortNameOf(p: Pick<Product, 'name' | 'short'>): string {
+  if (p.short && p.short.trim()) return p.short.trim();
+  const words = String(p.name ?? '').trim().split(/\s+/);
+  const out: string[] = [];
+  for (const [i, w] of words.entries()) {
+    if (i > 0 && (/\d/.test(w) || UNIT_RE.test(w))) break;
+    out.push(w);
+  }
+  return (out.length >= 2 ? out : words).join(' ').toLowerCase();
+}
+
+/** "~1,05tr" → 1 050 000 · "~390k" → 390 000 · "35.000–40.000đ" → 35 000 · không đọc được → null */
+export function parsePriceHint(hint: string | undefined): number | null {
+  const s = String(hint ?? '').toLowerCase().replace(/\s+/g, '');
+  const m = /(\d+(?:[.,]\d+)*)(tr|triệu|k|nghìn|ngàn|đ|d|vnđ)?/.exec(s);
+  if (!m) return null;
+  const unit = m[2] ?? '';
+  let n: number;
+  if (unit === 'tr' || unit === 'triệu') n = Number(m[1].replace(',', '.')) * 1_000_000;
+  else if (unit === 'k' || unit === 'nghìn' || unit === 'ngàn') n = Number(m[1].replace(',', '.')) * 1_000;
+  else n = Number(m[1].replace(/[.,]/g, ''));
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
+}
+
+/** Cảm nhận giá cho AI (không bao giờ đưa con số): ≤ 250k rẻ · ≤ 800k vừa túi tiền · còn lại hơi đắt; không rõ giá → undefined */
+export function priceFeelOf(p: Pick<Product, 'priceHint'>): PriceFeel | undefined {
+  const v = parsePriceHint(p.priceHint);
+  if (v === null) return undefined;
+  return v <= 250_000 ? 're' : v <= 800_000 ? 'vua' : 'cao';
+}
+
+/** tag chung không mang nghĩa ngữ cảnh (không tính điểm khớp) */
+const GENERIC_TAGS = new Set(['van-phong', 'lam-dep', 'cong-nghe']);
+
+/** Điểm khớp ngữ cảnh: số tag trùng, bỏ tag chung */
+export function contextScore(p: Pick<Product, 'tags'>, tags: ReadonlySet<string>): number {
+  let n = 0;
+  for (const t of p.tags) if (!GENERIC_TAGS.has(t) && tags.has(t)) n++;
+  return n;
+}
+
+const fold = (s: string): string => s.normalize('NFC').toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
+const STOP = new Set(['cái', 'con', 'bộ', 'chiếc', 'món', 'đồ', 'có', 'không', 'cho', 'của', 'hai', 'một', 'mini', 'nữ', 'nam']);
+
+/**
+ * Tìm món trên kệ được nhắc trong một câu tự do (ghi chú của AI biên kịch: "Tùng săn được con chuột gaming giá hời…").
+ * Khớp nguyên cụm tên đời thường → chắc chắn; không thì cần ≥ 2 từ có nghĩa của tên trùng. Không thấy → null.
+ */
+export function findProductInText(text: string): Product | null {
+  const t = ` ${fold(text)} `;
+  if (t.trim().length < 3) return null;
+  let best: Product | null = null;
+  let bestScore = 0;
+  for (const p of load()) {
+    const short = fold(shortNameOf(p));
+    let score = short && t.includes(` ${short} `) ? 100 + short.length : 0;
+    if (!score) {
+      const words = new Set([...fold(short).split(' '), ...fold(p.name).split(' ')].filter((w) => w.length >= 3 && !STOP.has(w)));
+      let hit = 0;
+      for (const w of words) if (t.includes(` ${w} `)) hit++;
+      score = hit >= 2 ? hit : 0;
+    }
+    if (score > bestScore) { bestScore = score; best = p; }
+  }
+  return best;
 }

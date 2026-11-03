@@ -1,6 +1,6 @@
 # Vận hành & deploy
 
-> Cập nhật lần cuối: 2026-11-02 · Phạm vi: `deploy/deploy.sh`, `deploy/nginx.site.conf`, `deploy/nginx.limit.conf`, hai file bí mật `deploy/vps.env` + `deploy/.env.production` (chỉ nhắc **tên biến**), phần "vận hành" của `src/server.ts` (`/api/health`, `/api/stats`, cookie admin, `/v/<ASSET_VERSION>/`, tắt êm), `public/js/net.js` (mã dev, nối lại), `public/js/store.js:140-202` (bộ đệm chống giật), `public/js/ui/hud.js` + `public/js/ui/devbar.js` (chip 🤖, nút 🚪) · Đọc khi: cần đưa bản mới lên site thật, site lỗi (502, giật, giao diện cũ, AI offline, hết quota), cần vào/thoát admin, cần đổi `.env` production, thêm route/nginx, hoặc lần đầu dựng lại VPS.
+> Cập nhật lần cuối: 2026-11-03 · Phạm vi: `deploy/deploy.sh`, `deploy/nginx.site.conf`, `deploy/nginx.limit.conf`, hai file bí mật `deploy/vps.env` + `deploy/.env.production` (chỉ nhắc **tên biến**), phần "vận hành" của `src/server.ts` (`/api/health`, `/api/stats`, cookie admin, `/v/<ASSET_VERSION>/`, tắt êm), `public/js/net.js` (mã dev, nối lại), `public/js/store.js:140-202` (bộ đệm chống giật), `public/js/ui/hud.js` + `public/js/ui/devbar.js` (chip 🤖, nút 🚪) · Đọc khi: cần đưa bản mới lên site thật, site lỗi (502, giật, giao diện cũ, AI offline, hết quota), cần vào/thoát admin, cần đổi `.env` production, thêm route/nginx, hoặc lần đầu dựng lại VPS.
 
 Tài liệu này trả lời: bản production đang chạy **ở đâu, bằng gì, qua những lớp nào** (Cloudflare → nginx → Node), `deploy/deploy.sh` làm **đúng từng bước gì** và bẫy ở đâu, từng chỉ thị nginx **vì sao** có mặt, Cloudflare ảnh hưởng thế nào (cache 4 giờ, gói WebSocket đến so le, chế độ SSL), **lệnh** xem log / health / pm2, cách **cập nhật & rollback**, cách vào **admin** bằng `DEV_TOKEN`, cách **đọc chip 🤖** để theo dõi quota AI miễn phí, và **sự cố thường gặp**. Nó không chép lại giao thức HTTP/WS (xem [02-kien-truc-va-giao-thuc.md](./02-kien-truc-va-giao-thuc.md) §6–§8, §10), cấu hình AI (xem [05-lop-ai.md](./05-lop-ai.md) §2, §4), snapshot/archive (xem [03-mo-phong-the-gioi.md](./03-mo-phong-the-gioi.md) §16–§17) hay hướng dẫn chủ dự án (`../README.md` §3, §8, §11). Mục lục và lộ trình đọc theo vai trò: [README.md](./README.md) (và [01-tong-quan.md §10](./01-tong-quan.md)).
 
@@ -134,6 +134,7 @@ File này trở thành `/opt/vibecorp/.env` (`deploy.sh:40`); `dotenv` đọc n�
 | `TIME_MODE` | `compressed` (mặc định) hoặc `realtime` | `realtime` = theo giờ VN, nghỉ T7/CN, không tua nhanh (README §10) |
 | `DAILY_BUDGET_USD`, `MIN_SECONDS_BETWEEN_LLM`, `LLM_ONLY_WHEN_WATCHED` | 1 / 20 / `true` | provider miễn phí có giá 0 nên không chạm ngân sách; `LLM_ONLY_WHEN_WATCHED=true` tiết kiệm quota khi không ai xem |
 | `COMPANY_NAME` | `Cty TNHH VibeCorp` | hiện trên giao diện |
+| `SITE_URL` | **tuỳ chọn** — để trống vẫn đúng | gốc URL cho thẻ chia sẻ (Open Graph, canonical) trong `index.html`. Trống → server suy từ `Host` + https (nhận `X-Forwarded-Proto` của nginx **hoặc** `CF-Visitor` của Cloudflare, nên đúng cả khi Cloudflare ở chế độ Flexible). Đặt cứng (vd địa chỉ site thật) nếu muốn chắc chắn tuyệt đối — §7.6 |
 
 Không đưa `DEBUG_PROMPTS=1` lên production (in prompt + phản hồi AI ra log; `src/ai/llm.ts:279`).
 
@@ -327,6 +328,13 @@ Mọi lệnh dưới đây chạy **sau khi SSH vào VPS** (`ssh -p <VPS_PORT> <
 2. `bash deploy/deploy.sh` → đọc kỹ 2 dòng health + `✅`.
 3. Mở site; mở `#dev=…` nếu cần xem chip 🤖; `pm2 logs vibecorp --lines 50` không có lỗi đỏ mới; console trình duyệt không lỗi.
 4. Ghi mốc vào lịch sử ở [01-tong-quan.md](./01-tong-quan.md) §8 nếu là thay đổi đáng nhớ.
+
+### 7.6 Ảnh xem trước khi chia sẻ link (Open Graph) — 2026-11-03
+
+- Trang có đủ thẻ Open Graph / Twitter / canonical / JSON-LD ([08](./08-frontend-giao-dien.md) §2); ảnh `public/og-image.jpg` (1200×630) + `icon-192/512.png`, `apple-touch-icon.png`, `site.webmanifest`, `robots.txt` đi theo rsync như mọi file `public/`.
+- **Tạo lại ảnh** (khi giao diện đổi nhiều): chạy server offline trên máy dev (`PORT=3333 PERSIST=false AI_PROVIDERS=none NEWS_ENABLED=false npm start`) rồi `npm run share-images -- --url http://localhost:3333/ --label <tên miền in trên ảnh>` — cần Chrome/Chromium (`CHROME_PATH` nếu không ở chỗ thường gặp). Script tự tua x10 tới giờ làm khi văn phòng còn vắng, phóng nhẹ, chờ có bong bóng thoại rồi chụp ([11](./11-kiem-thu-qa.md)). Không chạy trên VPS (không cần, và VPS không có Chrome).
+- **Sau deploy**: dán `https://<tên miền>/` vào Facebook Sharing Debugger (developers.facebook.com/tools/debug) → "Scrape Again" để Facebook lấy thẻ mới; Zalo tự lấy lại sau một thời gian. `og:image` mang `?v=<băm 10 ký tự của ảnh>` (`OG_VERSION`, tính lúc server khởi động) nên đổi ảnh = đổi URL, mạng xã hội không giữ ảnh cũ.
+- Kiểm nhanh không cần Facebook: `curl -s https://<tên miền>/ | grep -E 'og:(url|image)"'` phải ra URL `https://<tên miền>/…` (không phải `http://`, không phải `localhost`) và `curl -sI https://<tên miền>/og-image.jpg` trả `200 image/jpeg`.
 
 ### 7.2 Rollback
 

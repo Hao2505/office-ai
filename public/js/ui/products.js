@@ -1,17 +1,21 @@
-// Tab "🛍️ Sản phẩm": kệ phòng trưng bày theo 2 nhóm (Làm đẹp / Công nghệ) từ hello.products, kèm nhận xét
-// của chủ dự án và nút mua (src=sidebar). Cũng lo tooltip sản phẩm khi rê chuột lên kệ trên canvas
+// Tab "🛍️ Sản phẩm": kệ phòng trưng bày theo 2 nhóm (Làm đẹp & thời trang / Công nghệ & nhà cửa) từ hello.products, kèm
+// 1 câu giới thiệu và nút mua (src=sidebar). Cũng lo tooltip sản phẩm khi rê chuột lên kệ trên canvas
 // (hook onProductHover) và mở link khi bấm (hook onProductClick) — link luôn đi qua /go/<id>.
 import { store } from '../store.js';
 import { el, setKids, str, safeProductUrl, safeImageUrl, clamp } from '../util.js';
 import { SHELF_LABELS } from '../labels.js';
 
 let box = null, tip = null, stage = null;
-let tipId = null;
+let tipId = null, tipProduct = null;
 
 export function initProducts() {
   box = document.getElementById('products');
   tip = document.getElementById('prod-tip');
   stage = document.getElementById('stage');
+  // thẻ mở bằng chạm (class touch): chạm vào thẻ cũng mở link — mục tiêu to hơn ô sản phẩm nhỏ xíu trên kệ
+  tip?.addEventListener('click', () => {
+    if (tip.classList.contains('touch') && tipProduct && openProduct(tipProduct, 'showroom')) tip.hidden = true;
+  });
   store.on('products', render);
   render();
 }
@@ -33,21 +37,31 @@ export function openProduct(product, src = 'showroom') {
   return true;
 }
 
-/** tooltip DOM cạnh con trỏ (toạ độ client), null = ẩn */
-export function showProductTip(product, clientX, clientY) {
+/** màn hình không rê chuột được (điện thoại, tablet): chạm lần 1 xem tên · giá, chạm lần 2 (hoặc chạm thẻ) mở link */
+const TOUCH = typeof matchMedia === 'function' ? matchMedia('(hover: none)') : { matches: false };
+
+/**
+ * tooltip DOM cạnh con trỏ / chỗ chạm (toạ độ client), null = ẩn. pointerType (từ canvas): 'mouse' = rê chuột; còn lại =
+ * chạm chọn → gợi ý "chạm lần nữa" và thẻ bấm được. Không có thì đoán theo màn hình.
+ */
+export function showProductTip(product, clientX, clientY, pointerType) {
   if (!tip) return;
-  if (!product || typeof product !== 'object') { tip.hidden = true; tipId = null; return; }
+  if (!product || typeof product !== 'object') { tip.hidden = true; tipId = null; tipProduct = null; return; }
   const p = store.productById(product.id) || product;
-  if (tipId !== p.id || tip.hidden) {
+  const touch = pointerType ? pointerType !== 'mouse' : TOUCH.matches;
+  if (tipId !== p.id || tip.hidden || tip.classList.contains('touch') !== touch) {
     tipId = p.id;
+    const hint = !safeProductUrl(p.url) ? 'Chưa có link' : touch ? 'Chạm lần nữa để xem trên Shopee ↗' : 'Bấm để xem trên Shopee ↗';
     setKids(tip,
       media(p, 'pt-media'),
       el('div', { class: 'pt-main' },
         el('div', { class: 'pt-name', text: str(p.name, 90) }),
         p.priceHint ? el('div', { class: 'pt-price', text: str(p.priceHint, 24) }) : null,
-        el('div', { class: 'pt-hint', text: safeProductUrl(p.url) ? 'Bấm để xem trên Shopee ↗' : 'Chưa có link' }),
+        el('div', { class: 'pt-hint', text: hint }),
         el('div', { class: 'pt-cap', text: 'Link tiếp thị liên kết' })));
   }
+  tipProduct = p;
+  tip.classList.toggle('touch', touch);
   tip.hidden = false;
   const s = stage.getBoundingClientRect();
   const x = clamp(Number(clientX) - s.left, 0, s.width), y = clamp(Number(clientY) - s.top, 0, s.height);
@@ -76,7 +90,7 @@ function card(p) {
     el('div', { class: 'pcard-main' },
       el('div', { class: 'pcard-name', text: p.name }),
       p.priceHint ? el('div', { class: 'pcard-price', text: p.priceHint }) : null,
-      p.note ? el('div', { class: 'pcard-note', text: `“${p.note}”` }) : null,
+      p.note ? el('div', { class: 'pcard-note', text: p.note }) : null,
       el('div', { class: 'pcard-row' },
         url ? el('a', { class: 'pcard-buy', href: url, target: '_blank', rel: 'noopener sponsored', 'aria-label': `Mua ${p.name} trên Shopee` }, '🛒 Mua trên Shopee ↗') : null,
         el('span', { class: 'pcard-cap', text: 'Link tiếp thị liên kết' }))));
@@ -94,7 +108,7 @@ function render() {
     return;
   }
   setKids(box,
-    el('p', { class: 'products-note', text: 'Đồ chủ dự án đang dùng thật và thấy ổn — bày trên kệ phòng trưng bày trong văn phòng. Bấm vào món trên kệ hoặc nút bên dưới để xem trên Shopee.' }),
+    el('p', { class: 'products-note', text: 'Đồ chủ dự án chọn giới thiệu, bày trên kệ phòng trưng bày trong văn phòng. Giá hiển thị là giá tham khảo, có thể đổi theo voucher. Bấm vào món trên kệ hoặc nút bên dưới để xem trên Shopee.' }),
     ['beauty', 'tech'].map((shelf) => {
       const list = groups[shelf];
       if (!list.length) return null;

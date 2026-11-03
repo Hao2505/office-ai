@@ -1,6 +1,6 @@
 # Frontend: HUD, sidebar, tab, bảng dev (giao diện DOM)
 
-> Cập nhật lần cuối: 2026-11-02 · Phạm vi: `public/index.html`, `public/style.css`, `public/js/main.js`, `public/js/labels.js`, `public/js/util.js`, 14 module `public/js/ui/*.js` (hud, sidebar, tabs, feed, staff, profile, products, recaps, news, history, rumors, devbar, toasts, avatar) và các điểm nối với `store.js` / `net.js` / `render/office.js` / `src/server.ts` · Đọc khi: cần sửa bất kỳ thứ gì người xem nhìn thấy **ngoài canvas** (chip, popover, feed, hồ sơ, tab, bảng dev, toast, responsive), thêm loại cảnh / nhãn / nhóm tin mới, hoặc cần hiểu vì sao người xem thường không thấy số liệu hệ thống.
+> Cập nhật lần cuối: 2026-11-03 · Phạm vi: `public/index.html`, `public/style.css`, `public/js/main.js`, `public/js/labels.js`, `public/js/util.js`, 14 module `public/js/ui/*.js` (hud, sidebar, tabs, feed, staff, profile, products, recaps, news, history, rumors, devbar, toasts, avatar) và các điểm nối với `store.js` / `net.js` / `render/office.js` / `src/server.ts` · Đọc khi: cần sửa bất kỳ thứ gì người xem nhìn thấy **ngoài canvas** (chip, popover, feed, hồ sơ, tab, bảng dev, toast, responsive), thêm loại cảnh / nhãn / nhóm tin mới, hoặc cần hiểu vì sao người xem thường không thấy số liệu hệ thống.
 
 Tài liệu này trả lời: trang web được dựng từ gì (không có bước build), module nào vẽ phần nào, dữ liệu đi từ WebSocket tới DOM qua đường nào, các ngưỡng / hằng số / ràng buộc của từng khối, và "muốn đổi X trên giao diện thì sửa file nào". Phần **vẽ canvas** (bản đồ, nhân vật, bong bóng thoại, bộ đệm chống giật trong `store.js`, reconnect trong `net.js`) nằm ở [07-frontend-ve-canvas.md](./07-frontend-ve-canvas.md); hợp đồng thông điệp `ServerMsg` ở [02-kien-truc-va-giao-thuc.md](./02-kien-truc-va-giao-thuc.md) và [`src/types.ts`](../src/types.ts); biến môi trường ở [09-cau-hinh-du-lieu.md](./09-cau-hinh-du-lieu.md). Tài liệu cũ vẫn còn giá trị và được trỏ tới chứ không chép lại: [README.md](../README.md) §2 (người xem thấy gì), §3.6 (chip 🤖 chỉ admin), §8–§9 (mã dev, bảng dev); [SPEC.md](../SPEC.md) §8 (phần tả "thanh trên cùng" đã lỗi thời — xem §21); [docs/v2-contract.md](./v2-contract.md) §4–§6; [docs/v3-news.md](./v3-news.md) mục "Giao diện"; [docs/ui-polish-todo.md](./ui-polish-todo.md) §1, §4, §9. Tổng quan dự án: [01-tong-quan.md](./01-tong-quan.md); mục lục bộ tài liệu: [README.md](./README.md).
 
@@ -113,9 +113,17 @@ Mọi truy cập storage bọc `try/catch` (`lsGet/lsSet`, `util.js:200-205`; `d
 
 ---
 
-## 2. `public/index.html` — khung DOM tĩnh (143 dòng)
+## 2. `public/index.html` — khung DOM tĩnh
 
-Vai trò: khung DOM duy nhất; mọi nội dung động do JS tạo. `lang="vi"`, viewport `viewport-fit=cover` (CSS dùng `env(safe-area-inset-*)`), `theme-color #f6f1ea`, `<title>` mặc định "Văn Phòng Ảo — VibeCorp" (JS ghi đè theo `companyName` sau `hello`), `<meta name="description">` cho SEO (`index.html:8` — chuỗi cứng, **không** theo `COMPANY_NAME`), favicon SVG data-URL (`index.html:5-9`). Cấu trúc: `#app` → `main.main#main` → `section.stage#stage` + `aside.sidebar#sidebar`; ngoài `main`: `#drawer-backdrop`, `aside.drawer#drawer`.
+Vai trò: khung DOM duy nhất; mọi nội dung động do JS tạo. `lang="vi"`, viewport `viewport-fit=cover` (CSS dùng `env(safe-area-inset-*)`), `theme-color #f6f1ea`, `color-scheme light`, `<title>` mặc định "Văn Phòng Ảo — VibeCorp | Sitcom văn phòng AI phát trực tiếp 24/7" (JS ghi đè theo `companyName` sau `hello`).
+
+**Thẻ chia sẻ / SEO trong `<head>` (2026-11-03)** — để dán link lên Facebook, Zalo, Messenger, X… hiện tiêu đề + mô tả + ảnh văn phòng thay vì link trơn:
+
+- SEO: `description`, `keywords`, `robots` (`index, follow, max-image-preview:large`), `application-name`, `apple-mobile-web-app-title`, `format-detection`, `<link rel="canonical">`.
+- Open Graph (`og:type/site_name/locale vi_VN/url/title/description/image (+secure_url, type, width 1200, height 630, alt)`), Twitter/X (`summary_large_image` + title/description/image/alt), JSON-LD `WebSite` (`name`, `url`, `inLanguage`, `description`, `image`).
+- Biểu tượng: favicon SVG emoji 🏢 (data-URL, cho tab trình duyệt) + `icon-192.png` (Google / Android) + `apple-touch-icon.png` 180 + `site.webmanifest` (tên, màu, icon 192/512, `display: standalone`).
+- **Mọi URL tuyệt đối viết bằng chỗ giữ chỗ** `%SITE_URL%` (gốc site) và `%OG_VERSION%` (băm ảnh xem trước) — server điền khi trả trang (`sendIndexHtml`, [02](02-kien-truc-va-giao-thuc.md) §2; cấu hình `SITE_URL` ở [09](09-cau-hinh-du-lieu.md)). Mở file `index.html` trực tiếp (không qua server) sẽ thấy nguyên chữ `%SITE_URL%` — bình thường.
+- Chữ trong các thẻ là chuỗi cứng (không theo `COMPANY_NAME`); đổi tên công ty thì sửa tay. Ảnh `public/og-image.jpg` + icon tạo bằng `npm run share-images` ([11](11-kiem-thu-qa.md), [10](10-van-hanh-deploy.md)) — **không** dùng trong giao diện (giao diện vẫn 0 ảnh, xem [12](12-quyet-dinh-thiet-ke.md)). Cấu trúc: `#app` → `main.main#main` → `section.stage#stage` + `aside.sidebar#sidebar`; ngoài `main`: `#drawer-backdrop`, `aside.drawer#drawer`.
 
 | Vùng | Phần tử (id / class) | Dòng | Module dùng |
 |---|---|---|---|
@@ -216,9 +224,11 @@ Biến đặt động từ JS: `--stage-tint` (canvas đặt lên `#stage`, dùn
 | `@container sidebar (max-width: 299px)` | ẩn chữ tab, tab cao 38 px, icon 17 px | 543-547 |
 | `@container sidebar (max-width: 379px)` | chip sản phẩm: giấu `.prod-price`, bỏ chữ "Xem ", in giá qua `.prod-cap[data-price]::before` | 731-735 |
 | `@container sidebar (max-width: 299px)` | Lịch sử: ẩn nhãn "Ngày", ô chọn chiếm trọn hàng | 1104-1107 |
-| `@media (max-width: 1280px)` | `.chip-tx` tối đa 110 px, ẩn `.chip-dt` | 1130-1133 |
-| `@media (max-width: 1100px)` | ẩn chữ chip 👀 | 1134-1136 |
-| `@media (max-width: 899px)` — **mobile** | `.main` 1 cột 2 hàng `minmax(240px,46%)` canvas + phần còn lại sidebar; ẩn `.sb-handle`; HUD thành một hàng cuộn ngang với `pointer-events:auto`; `.chip-incident {order:-1}`; ẩn `.chip-dt`; `.popover` rộng `100% − 16px`; `.toasts` `top:44px`; ẩn `.stage-hint/.hover-tip/.prod-tip`; ticker 30 px; drawer thành bottom-sheet `88dvh` trượt từ dưới; `env(safe-area-inset-*)` cho padding | 1137-1171 |
+| `@media (max-width: 1280px)` | `.chip-tx` tối đa 110 px (từ 2026-11-03 **không** ẩn `.chip-dt` / chữ 👀 theo bề rộng cửa sổ nữa — HUD tự co theo chỗ trống thật, §4.6) | `/* chip-dt … */` |
+| `@media (max-width: 899px)` — **mobile** | `.main` 1 cột 2 hàng `minmax(240px,46%)` canvas + phần còn lại sidebar; ẩn `.sb-handle`; HUD thành một hàng cuộn ngang với `pointer-events:auto` (§4.6 co trước khi phải cuộn); `.chip-incident {order:-1}`; `.popover` rộng `100% − 16px`; `.toasts` `top:44px`; ẩn `.stage-hint/.hover-tip` — **`.prod-tip` vẫn hiện** (rà soát 2026-11-03: chạm lần 1 vào món trên kệ để xem tên · giá, §10); ticker 30 px; drawer thành bottom-sheet `88dvh` trượt từ dưới; `env(safe-area-inset-*)` cho padding | 1137-1171 |
+| `@media (max-width: 899px) and (orientation: landscape) and (max-height: 540px)` — **điện thoại xoay ngang** (2026-11-03) | sidebar sang **phải** `clamp(230px, 40vw, 330px)`, 1 hàng (nằm dưới thì bản đồ chỉ còn dải ~240 px, chữ to hơn cả phòng) | sau khối 899 px |
+| `.hud.hud-fit-1` … `.hud-fit-6` (không phải media query) | các nấc co HUD do `hud.js fitHud` thêm (§4.6) | sau khối xoay ngang |
+| `.stage.narrow` (lớp do `fitHud` đặt khi `#stage` < 760 px) | dòng gợi ý "👆 Bấm vào nhân viên…" 11 px, chừa chỗ nút thu phóng | như trên |
 | `@media (max-width: 420px)` | tab chữ 10.5 px cao 42 px, chân dung hồ sơ 88 px, `.stat` cột 100 px | 1172-1177 |
 | `@media (prefers-reduced-motion: reduce)` | tắt mọi animation / transition | 1178-1180 |
 
@@ -253,7 +263,7 @@ Luồng (`hud.js:23-28`): `hello` → reset `lastClockKey`, `renderClock()`, `re
 
 ### 4.3 Chip (`renderStatus`, 149-180; `chipContent`, 142-147)
 
-`chipContent(chip, icon, text, detail)` dựng `.chip-ic` / `.chip-tx` / `.chip-dt` (detail ẩn ở ≤ 1280 px).
+`chipContent(chip, icon, text, detail)` dựng `.chip-ic` / `.chip-tx` / `.chip-dt` (detail ẩn khi HUD thiếu chỗ — nấc 1 của §4.6).
 
 | Chip | Nội dung | Lớp trạng thái | Popover |
 |---|---|---|---|
@@ -263,11 +273,29 @@ Luồng (`hud.js:23-28`): `hello` → reset `lastClockKey`, `renderClock()`, `re
 | 👀 `#chip-viewers` | `fmtNum(viewers)` | — | `viewersPop` (266-272): "👀 N người đang xem trực tiếp"; dòng "🛒 N lượt bấm link tiếp thị liên kết" **chỉ khi `store.dev`** |
 | 🤖 `#chip-ai` (`renderAi`, 183-206) | xem §4.5 | `.offline/.over/.backup` | `aiPop` (275-331) chỉ khi `store.dev`, ngược lại `[]` (113) |
 
+### 4.6 HUD tự co cho vừa bề ngang (`fitHud`, `scheduleFit`, `FIT_LEVELS`) — 2026-11-03
+
+Vấn đề cũ: HUD giữ cỡ chữ / khoảng cách của màn lớn → điện thoại 360–430 px chip bị cắt ở mép phải (phải vuốt ngang mới thấy), desktop phóng to 200 % chip tràn sang bảng tin. Giờ `fitHud()` bỏ hết lớp `hud-fit-*`, rồi thêm **từng nấc** tới khi `#hud` và `#chips` không còn tràn (`scrollWidth > clientWidth`):
+
+| Nấc | Lớp | Tác dụng (CSS cuối `style.css`) |
+|---|---|---|
+| 1 | `hud-fit-1` | ẩn chữ phụ chip (`.chip-dt`: "còn 6 ngày", "câu thoại mẫu") |
+| 2 | `hud-fit-2` | ẩn "Thứ … · Ngày …" của đồng hồ (còn giờ + thanh tiến độ ngày) |
+| 3 | `hud-fit-3` | thu khoảng cách + cỡ chữ (chip cao 26 px, chữ 11,5 px, giờ 13 px) |
+| 4 | `hud-fit-4` | nhãn "TRỰC TIẾP" chỉ còn viên đỏ có chấm nhấp nháy |
+| 5 | `hud-fit-5` | ẩn chip 👀 người xem |
+| 6 | `hud-fit-6` | ẩn chip 💰 doanh thu |
+
+Còn tràn sau nấc 6 thì HUD vẫn cuộn ngang như cũ (mobile). `scheduleFit()` gom về 1 lần/khung (`requestAnimationFrame`), gọi khi: đổi cỡ cửa sổ, `ResizeObserver` trên `#stage` (kéo độ rộng bảng tin, xoay máy), `document.fonts.ready`, cuối `renderStatus`, khi chữ ngày đổi (`lastDayText`) và khi mất kết nối. Cùng lúc đặt `#stage.narrow` khi khung < 760 px (§3.5). Đo thử 2026-11-03: 360×740 → nấc 4 (có chip 🤖 admin thì nấc 5), 390–430 → nấc 3, điện thoại xoay ngang / 960×540 → nấc 1–2, 1920×1080 → không co.
+
+Cuối `fitHud()`: chip đang mở popover mà vừa bị nấc 5 / 6 ẩn (`display: none` → `getClientRects()` rỗng) thì **đóng popover**; chip còn hiện thì chỉ `position()` lại (§4.4). HUD đổi cao do nấc co (nấc 3: 40 → 38 px) chỉ làm canvas tính lại khung qua `setInsets`, **không** kéo camera về góc mặc định ([07](./07-frontend-ve-canvas.md) §7.2).
+
 ### 4.4 Popover dùng chung (`initHud` 30-62; `open/close/position/renderPop` 65-117)
 
 - Mở **tạm** khi `mouseover` chip (nếu chưa ghim và khác chip đang mở) hoặc `focusin`; **ghim** (`pinned`) khi click; click lại chip đang ghim → đóng. `open(chip, pin)` tính `pinned = pin || (pinned && openChip === chip)` (`hud.js:74`): rê chuột / focus lại **chính chip đang ghim** vẫn giữ ghim, mở sang chip khác thì bỏ ghim.
 - Rời chuột khỏi chip (không sang popover) → `scheduleClose()` trễ **140 ms** (67); vào popover thì huỷ hẹn; rời popover (không ghim) → hẹn đóng. `focusout` ra ngoài chips/popover → hẹn đóng.
 - Đóng khi `pointerdown` ngoài chips/popover (54-56), `Escape` (trả focus về chip, 57-59). `resize`, cuộn `#chips`, cuộn `#hud` → chỉ **định vị lại** (60-62). Feed tự cuộn **không** đóng popover (chú thích đầu file).
+- Đóng khi **chip neo bị ẩn**: chip sự cố đổi trạng thái (`renderStatus`), chip 🤖 khi không còn là admin, và từ rà soát 2026-11-03 cả khi `fitHud` ẩn 👀 / 💰 ở nấc 5 / 6 (§4.6). Trước đó popover đã ghim vẫn neo vào khung rỗng (toạ độ 0) → nhảy lên đè hàng HUD (nhãn TRỰC TIẾP, đồng hồ, chip 🔥 vừa hiện), trỏ vào không gì cả cho tới khi người xem chạm chỗ khác — đo được ở 667×375 xoay ngang khi có sự cố.
 - `position()` (89-101): căn mép phải popover theo mép phải chip, kẹp `x ∈ [8, stageW − pw − 8]`; `y = chip.bottom + 6`; lật lên trên nếu không đủ chỗ dưới (cách mép 8 px).
 - `renderPop()` (103-117) `switch (openChip.id)`; `renderStatus` vẽ lại + định vị lại popover đang mở (179).
 
@@ -296,7 +324,7 @@ Export: `initSidebar()`, `onSidebarToggle(fn)`, `isCollapsed()`, `sidebarWidth()
 | Thu gọn / mở lại (`setCollapsed`) | toggle `body.sb-collapsed` (CSS ẩn sidebar, canvas tràn), `#ticker.hidden = !collapsed`, `aria-expanded` trên `#sb-collapse`, lưu nếu `persist`, bật/tắt ticker, gọi mọi listener `onSidebarToggle(collapsed)`, chuyển focus sang nút tương ứng khi do người dùng bấm | 85-94 |
 | Ticker | `TK_MAX = 3` mục, `TK_EVERY = 4500` ms. Học từ 40 dòng cuối `hello.log`, theo dõi `store.on('log')`. `pushTicker` bỏ `scene_start/scene_end` và dòng không có text; `line` → icon theo kênh (📱 group, 🏢 company, 💬 office) + `who` ≤ 40 + text ≤ 220; sự kiện → icon riêng (≤ 8) + `stripIcon(text)`. `renderTicker` chỉ vẽ khi đang thu gọn; rỗng → "Văn phòng còn yên ắng…". `startTicker` xoay vòng mỗi 4,5 s, đứng yên khi `document.visibilityState === 'hidden'` hoặc < 2 mục | 16-17, 63-71, 97-129 |
 
-Ai nghe `onSidebarToggle`: feed (cuộn xuống cuối khi mở lại, `feed.js:49`), main (`syncInsets`, `main.js:76`). Listeners là `Set` cấp module nên đăng ký trước/sau `initSidebar` đều được. Trên mobile không kéo được nhưng vẫn thu gọn được (ticker 30 px, `style.css:1167`). `isCollapsed()` và `sidebarWidth()` hiện không có nơi nào gọi.
+Ai nghe `onSidebarToggle`: feed (cuộn xuống cuối khi mở lại, `feed.js:49`), main (`syncInsets`, `main.js:76` — đo **ngay** rồi đo lại ở frame sau: ticker đã ẩn/hiện xong khi listener chạy, đo ngay thì lần `resize()` kế tiếp của canvas dựng khung mặc định với vùng chừa mới; trước vòng 3 chỉ đo ở frame sau nên khung mặc định dựng theo vùng chừa cũ, lệch khoảng chiều cao ticker). Listeners là `Set` cấp module nên đăng ký trước/sau `initSidebar` đều được. Trên mobile không kéo được nhưng vẫn thu gọn được (ticker 30 px, `style.css:1167`). `isCollapsed()` và `sidebarWidth()` hiện không có nơi nào gọi.
 
 ---
 
@@ -354,7 +382,7 @@ article.scene-card.tone-<tone>.ch-<channel>[.is-live][.collapsed][.has-news][dat
 └─ div.sc-foot[hidden]         "🎬 tóm tắt" (≤ 300) khi cảnh xong
 ```
 
-- `ICON_TYPE` (260-264) ánh xạ 16 icon → loại cảnh để **đoán lại tông màu** cho cảnh đã diễn trước khi mở trang (`guessScene`, 265-276: tách `text` theo `" · "`, ≥ 3 phần → tiêu đề = các phần đầu, địa điểm = phần cuối).
+- `ICON_TYPE` ánh xạ 18 icon → loại cảnh (v5 thêm 🧯 → `crisis_meeting`, 📣 → `pep_talk`) để **đoán lại tông màu** cho cảnh đã diễn trước khi mở trang (`guessScene`, 265-276: tách `text` theo `" · "`, ≥ 3 phần → tiêu đề = các phần đầu, địa điểm = phần cuối).
 - `fill(card, meta, e)` (301-332): icon = `meta.icon || e.icon || SCENE_DEFAULTS[type][0] || '💬'`; tiêu đề = `meta.title || stripIcon(e.text) || SCENE_DEFAULTS[type][1] || 'Cuộc trò chuyện'` (`SCENE_DEFAULTS`, `labels.js:232-239`); thẻ tin = `normNewsRef(meta.news) || normNewsRef(e.news) || card.news` → `newsCard(news, {compact: true})`; `className` tính lại toàn bộ (tone, kênh, live, collapsed, has-news); `aria-label`.
 - `startCard` (334-352): `sid = e.sceneId || "anon_<id>"`; meta từ `store.sceneMeta` (live; chỉ còn ≤ 300 cảnh gần nhất, §7.2) hoặc `guessScene`; nếu đã có thẻ tạm (dòng tới trước) hoặc thẻ đang live → chỉ `fill`; nếu **id cảnh bị dùng lại** cho cảnh mới → thẻ cũ đổi khoá thành `"${sid}#${e.id}"` (339-345) — đừng dựa vào `cards.get(sid)` để tìm thẻ cũ; `card.live = store.scenes.has(sceneId)` (chỉ live mode); thẻ live append cuối, không thì `insertSettled`.
 - `finish` (354-371): bỏ `.is-live`, ghi `.sc-foot`, vẽ lại, đưa thẻ vừa xong về cuối vùng đã xong, `autoCollapse`. `endCard` (373-382): không có thẻ → pill `.ev.ev-end` "🎬 …".
@@ -383,7 +411,7 @@ Cần `p.name`; `url = safeProductUrl(p.url)`; `a.prod-chip[target=_blank][rel="
 
 `kind`: `hr` → `.ev-hr` (vàng), `system` → `.ev-system` (xám), còn lại `.ev-event` (cam); `title` khi text > 70 ký tự; text ≤ 300 qua `stripIcon`; kèm `productChip` và/hoặc `newsCard(e.news, {compact, caption: false})` → bọc `.ev-wrap[data-cat=event]`. Trong luồng trực tiếp, dòng ⚠️ cảnh cáo / ⚖️ quyết định / 🚪 xin nghỉ do server ghi với `kind: 'hr'` nên tự thành pill vàng. Ở Lịch sử, bản ghi archive `hr` có `decisions[]` được `history.js` đổi thành pill ⚖️ "Quyết định nhân sự: {icon} {tên}: {nhãn HR_ACTION_LABELS} — lý do" (§11.2).
 
-### 7.8 Tông màu theo loại cảnh (`sceneToneOf`, `labels.js:214-229`; CSS 632-636, 1029-1041)
+### 7.8 Tông màu theo loại cảnh (`sceneToneOf`, `SCENE_TONE` trong `labels.js`; CSS `.scene-card.tone-*`)
 
 | Tông | Loại cảnh | Màu `--tone` |
 |---|---|---|
@@ -391,8 +419,9 @@ Cần `p.name`; `url = safeProductUrl(p.url)`; `a.prod-chip[target=_blank][rel="
 | `happy` | `HAPPY_SCENES`: celebration, welcome, pingpong_match | `--ok` xanh |
 | `shop` | `SHOP_SCENES`: showroom_chat | `--shopee` |
 | `news` | news_chat | `#0284c7` |
-| `hr` | hr_review, resign_talk, raise_request | `#7c3aed` |
+| `hr` | hr_review, resign_talk, raise_request, **pep_talk** (v5 📣 sếp truyền lửa / nói riêng / hoà giải) | `#7c3aed` |
 | `gold` | promotion | `#ca8a04` |
+| `crisis` (v5, 2026-11-03) | **crisis_meeting** (🧯 họp xử lý tình huống công ty) | `#c2410c` cam đất; đầu thẻ `#fff4ec` |
 | `group` / `company` / `office` | loại khác → theo kênh | `--group` / `--company` / `--accent` |
 
 Thêm `SceneType` mới: cập nhật `sceneToneOf` (hoặc một `Set`), `SCENE_DEFAULTS` (icon/tiêu đề dự phòng), `ICON_TYPE` trong feed.js (đoán từ icon), và CSS `.scene-card.tone-<x>` + `.tone-<x> .sc-head`.
@@ -437,11 +466,11 @@ Bẫy: `render` được gọi lại **mỗi 2 s** khi drawer mở (sự kiện 
 
 ## 10. Tab "Sản phẩm" + tooltip kệ (`public/js/ui/products.js`, 106 dòng)
 
-Export: `initProducts()`, `productUrl(url, src)`, `openProduct(product, src = 'showroom')`, `showProductTip(product, clientX, clientY)`. Nghe `store.on('products')` → `render` (15). Dữ liệu: `store.products` đã qua `normProduct` và cắt ≤ 60 (`store.js:92-108, 363`); `store.productsByShelf()` → `{beauty, tech}` sắp theo `slot` (`store.js:74-80`).
+Export: `initProducts()`, `productUrl(url, src)`, `openProduct(product, src = 'showroom')`, `showProductTip(product, clientX, clientY, pointerType?)`. Nghe `store.on('products')` → `render` (15). Dữ liệu: `store.products` đã qua `normProduct` và cắt ≤ 60 (`store.js:92-108, 363`); `store.productsByShelf()` → `{beauty, tech}` sắp theo `slot` (`store.js:74-80`).
 
 - `productUrl` (20-26): chỉ nhận `/go/...` (`safeProductUrl`); `src` phải khớp `^[a-z_]{1,20}$` (`products.js:23`) không thì về `'sidebar'`; thay hoặc thêm `src=`. Tab dùng `src=sidebar`; canvas gọi `openProduct(p, 'showroom')` (`main.js:34`) → `window.open(url, '_blank', 'noopener')` (`hello.products` vốn đã mang `src=showroom` từ server, `src/content/products.ts:232`). Hai nguồn còn lại (`scene`, `desk`) do server đặt, client không đụng (bảng ở §1.2). Server (`src/server.ts:329-349`) chỉ chuyển hướng id có trong danh mục, đếm click theo `src` (`GET` thôi, `HEAD` không tính) với regex **rộng hơn** client: `^[A-Za-z0-9_-]{1,32}$` (`server.ts:343`), `src` lạ → `'khac'`. Thêm nguồn mới phía client: tên phải khớp **cả hai** regex (chữ thường + `_`, ≤ 20 ký tự).
-- Tooltip kệ (`showProductTip`, 37-59): `#prod-tip`; `null` → ẩn; chỉ dựng lại DOM khi đổi `id`; vị trí = con trỏ + 16 px, lật nếu tràn, kẹp trong `#stage` cách mép 8 px, đặt bằng `transform: translate`. Nội dung: `media` (61-70: `img[loading=lazy][referrerpolicy=no-referrer]`, lỗi ảnh → emoji), tên ≤ 90, giá ≤ 24, "Bấm để xem trên Shopee ↗" / "Chưa có link", "Link tiếp thị liên kết". Trên mobile CSS ẩn `.prod-tip` dù JS vẫn dựng.
-- Tab (`card`/`render`, 72-106): rỗng → `.empty` 3 dòng; `.products-note`; mỗi kệ `section.pg.pg-<shelf>` tiêu đề từ `SHELF_LABELS` (`labels.js:167`: 💄 Làm đẹp / 🔌 Công nghệ) + "N món"; `.pcard` {ảnh/emoji, tên, giá, ghi chú trong ngoặc kép, `a.pcard-buy[rel="noopener sponsored"]` "🛒 Mua trên Shopee ↗", `.pcard-cap`}.
+- Tooltip kệ (`showProductTip`, 37-59): `#prod-tip`; `null` → ẩn; chỉ dựng lại DOM khi đổi `id`; vị trí = con trỏ + 16 px, lật nếu tràn, kẹp trong `#stage` cách mép 8 px, đặt bằng `transform: translate`. Nội dung: `media` (61-70: `img[loading=lazy][referrerpolicy=no-referrer]`, lỗi ảnh → emoji), tên ≤ 90, giá ≤ 24, dòng gợi ý theo **thiết bị vừa dùng** — `pointerType` do canvas truyền (`'mouse'` = rê chuột, còn lại = chạm), thiếu thì đoán bằng `TOUCH = matchMedia('(hover: none)')` (máy lai chuột + cảm ứng nay ra đúng gợi ý, vòng 3): chạm "Chạm lần nữa để xem trên Shopee ↗", chuột "Bấm để xem trên Shopee ↗" (không có link: "Chưa có link") — rồi "Link tiếp thị liên kết". Thẻ mở bằng chạm có class **`.touch`** (`pointer-events: auto`, `cursor: pointer`) và **bấm vào thẻ = mở link** (`openProduct(món, 'showroom')`, rồi ẩn thẻ) — mục tiêu to hơn ô món nhỏ xíu trên kệ; thẻ mở bằng chuột vẫn `pointer-events: none`. **Hiện trên mọi khổ màn hình** (rà soát 2026-11-03): canvas gọi `onProductHover` khi rê chuột, hoặc khi chạm lần 1 vào món trên cảm ứng (chạm lần 2 mới `onProductClick` → `openProduct`; kéo / chụm / chạm chỗ khác thì ẩn — [07](./07-frontend-ve-canvas.md) §7.11). Trước đó CSS ẩn `.prod-tip` ở ≤ 899 px và cảm ứng không có hover → điện thoại / tablet không bao giờ thấy tên hay giá, chạm là mở Shopee ngay.
+- Tab (`card`/`render`): rỗng → `.empty` 3 dòng; `.products-note` = "Đồ chủ dự án chọn giới thiệu, bày trên kệ phòng trưng bày trong văn phòng. Giá hiển thị là giá tham khảo, có thể đổi theo voucher. Bấm vào món…" (2026-11-03: bỏ câu "đang dùng thật" — không khẳng định điều chưa kiểm chứng); mỗi kệ `section.pg.pg-<shelf>` tiêu đề từ `SHELF_LABELS` (`labels.js`: 💄 Làm đẹp & thời trang / 🔌 Công nghệ & nhà cửa) + "N món"; `.pcard` {ảnh/emoji, tên, giá, ghi chú (không còn ngoặc kép), `a.pcard-buy[rel="noopener sponsored"]` "🛒 Mua trên Shopee ↗", `.pcard-cap`}. Danh mục chính thức 26 món (làm đẹp 12 · công nghệ 14) — [09](09-cau-hinh-du-lieu.md) §5.
 
 Bẫy: **không bao giờ** nhúng URL Shopee thẳng vào DOM — mọi link đi qua `/go/<id>` của server (đếm click, chống open redirect). Danh mục sản phẩm và chỗ trống còn lại xem [09-cau-hinh-du-lieu.md](./09-cau-hinh-du-lieu.md) và [13-viec-con-lai-va-y-tuong.md](./13-viec-con-lai-va-y-tuong.md).
 
@@ -553,7 +582,7 @@ Mọi nhãn tiếng Việt / bảng ánh xạ tập trung ở đây; thay đổi
 | `slackScreenKind`, `workScreenKind`, `ROOM_ICONS`, `bossAwayLabel` | 130-164, 206-212 | dành cho canvas (xem 07) | render |
 | `SHELF_LABELS` | 167 | 💄 Làm đẹp / 🔌 Công nghệ | products |
 | `aiProviderName`, `aiFullLabel`, `providerStateLabel` | 173-203 | nhãn chip / popover AI (admin) | hud |
-| `HOT_SCENES`, `HAPPY_SCENES`, `SHOP_SCENES`, `sceneToneOf`, `SCENE_DEFAULTS` | 215-239 | tông và icon/tiêu đề dự phòng của thẻ cảnh (§7.8) | feed |
+| `HOT_SCENES`, `HAPPY_SCENES`, `SHOP_SCENES`, `SCENE_TONE`, `sceneToneOf`, `SCENE_DEFAULTS` | quanh `sceneToneOf` | tông và icon/tiêu đề dự phòng của thẻ cảnh (§7.8); v5: `crisis_meeting` ['🧯', 'Họp xử lý tình huống'], `pep_talk` ['📣', 'Sếp truyền lửa'] | feed |
 | `NEWS_CATEGORIES` (6) | 242-249 | chip nhóm tin | news |
 | `HR_ACTION_LABELS` (10: warn, fire, second_chance, probation, praise, bonus, promote, open_position, layoff, none) | 252-263 | pill quyết định nhân sự trong Lịch sử | history |
 | `WEEKDAYS_FULL` | 266 | thứ theo `Date.getDay()` cho nhãn ngày Lịch sử | history |
@@ -572,9 +601,9 @@ Mọi nhãn tiếng Việt / bảng ánh xạ tập trung ở đây; thay đổi
 
 ## 18. Mobile (< 900 px)
 
-- CSS: `.main` xếp dọc (canvas `minmax(240px, 46%)` trên, sidebar dưới), HUD một hàng cuộn ngang, chip sự cố nhảy lên đầu (`order: -1`), ẩn `.chip-dt`, drawer thành bottom-sheet `88dvh`, ẩn gợi ý / tooltip, ticker 30 px, `safe-area-inset` (§3.5).
-- JS: `isMobile()` chặn kéo sidebar (`sidebar.js:33`); bảng dev mặc định gọn (`devbar.js:15`); bấm "📍 Xem trên bản đồ" đóng drawer để thấy canvas (`profile.js:28`); chống ghost click nền drawer 500 ms (`profile.js:22`). `products.js` vẫn dựng tooltip DOM dù CSS ẩn.
-- Canvas trên điện thoại tự phóng (xem 07). Ảnh tham chiếu: `docs/preview/v2/mobile.png`, `docs/preview/v1-mobile.png`.
+- CSS: `.main` xếp dọc (canvas `minmax(240px, 46%)` trên, sidebar dưới) — **trừ điện thoại xoay ngang** (cao ≤ 540 px): sidebar sang phải; HUD một hàng, tự co theo §4.6 (còn tràn mới cuộn ngang), chip sự cố nhảy lên đầu (`order: -1`), drawer thành bottom-sheet `88dvh`, ẩn dòng gợi ý và tooltip nhân vật / bảng (thẻ tên · giá món trên kệ **vẫn hiện**), ticker 30 px, `safe-area-inset` (§3.5).
+- JS: `isMobile()` chặn kéo sidebar (`sidebar.js:33`); bảng dev mặc định gọn (`devbar.js:15`); bấm "📍 Xem trên bản đồ" đóng drawer để thấy canvas (`profile.js:28`); chống ghost click nền drawer 500 ms (`profile.js:22`). Món trên kệ: chạm lần 1 hiện thẻ tên · giá (chữ "Chạm lần nữa để xem trên Shopee ↗"), chạm lần 2 vào cùng món mới mở link (§10, [07](07-frontend-ve-canvas.md) §7.11).
+- Canvas trên điện thoại tự phóng (dọc: ≥ 13 px/ô; xoay ngang / khung thấp: ≈ 12,5 px/ô) và chữ / bong bóng trên bản đồ co theo cỡ bản đồ ở tablet / desktop phóng to (xem [07](07-frontend-ve-canvas.md) §7.2). Ảnh tham chiếu: `docs/preview/v2/mobile.png`, `docs/preview/v1-mobile.png`.
 
 ---
 
@@ -613,11 +642,12 @@ Mọi nhãn tiếng Việt / bảng ánh xạ tập trung ở đây; thay đổi
 
 Không có test tự động nào chạm vào `public/` (`npm test` = typecheck TS của `src/` + smoke server + test news/llm/router; `scripts/smoke.ts` không khởi động HTTP/WS). Móc `window.__vpa` (`main.js:4`) và `canvas.__view()` (`render/office.js:1210`) dành cho QA headless nhưng **repo không có script nào dùng**. Kiểm tra hiện là **thủ công**; tối thiểu sau mỗi lần sửa:
 
-1. Desktop ≥ 1280 px, 900–1280 px (ẩn `.chip-dt`, chữ 👀), mobile < 900 px (HUD một hàng, drawer bottom-sheet).
+1. Desktop ≥ 1280 px, 900–1280 px, mobile < 900 px (HUD một hàng **không bị cắt mép** ở 360 px — §4.6, drawer bottom-sheet), **điện thoại xoay ngang** 844×390 (sidebar bên phải, bản đồ phóng sẵn), tablet 1024×768 / 768×1024, desktop phóng to 150–200 % (giả lập 1280×720 dpr 1,5 và 960×540 dpr 2): chữ / bong bóng trên bản đồ không che kín bản đồ, nhãn phòng có biểu tượng.
 2. Bật / tắt admin (mở kèm `#dev=<mã>` rồi 🚪): chip 🤖, dòng lượt bấm, nhãn nguồn bản tin, bảng dev phải **biến mất hoàn toàn** khi không phải admin.
 3. Thu gọn sidebar (ticker chạy, zoom/devbar nhích lên) và mở lại (feed cuộn cuối); kéo tay kéo tới 260 px để kích hoạt container query (tab chỉ còn icon, chip sản phẩm rút gọn, ô chọn ngày Lịch sử trọn hàng).
 4. Feed: lọc từng kênh, cuộn lên để thấy "▼ N tin mới", thẻ cảnh tự gọn sau 2 thẻ, bấm đầu thẻ mở/đóng, link sản phẩm / bài báo mở tab mới với `rel` đúng.
 5. Tắt server để thấy banner mất kết nối và canvas xám; mở lại để chắc `hello` lặp không nhân đôi nội dung.
+5b. Cảm ứng (giả lập `hasTouch` / `(hover: none)` hoặc máy thật): chạm món trên kệ lần 1 chỉ hiện thẻ tên · giá (không mở tab), lần 2 (hoặc chạm vào thẻ) mới mở `/go/<id>?src=showroom`; chạm đúp nhanh không mở; kéo bản đồ hoặc chờ 8 s thì thẻ biến mất. Thu gọn / mở sidebar (desktop) rồi bấm ⤢: khung mặc định khớp với lần tải trang mới (không lệch theo chiều cao ticker). Điện thoại xoay ngang 667×375: ghim popover 👀 rồi bắn sự cố `server_down` từ bảng dev (HUD sang nấc 5) — popover phải đóng, không đè HUD; bản đồ không giật khi chip sự cố hiện / ẩn.
 6. So với ảnh chuẩn trong `docs/preview/` (`v2/desktop.png`, `v2/mobile.png`, `v2/hud-cham-ai.png`, `v2/an-khung-chat.png`, `v2/tab-san-pham.png`…) và cập nhật ảnh khi đổi giao diện. Chi tiết quy trình QA ở [11-kiem-thu-qa.md](./11-kiem-thu-qa.md).
 
 ---
@@ -636,6 +666,9 @@ Không có test tự động nào chạm vào `public/` (`npm test` = typecheck 
 | Nếu bạn thay đổi … | → cập nhật … |
 |---|---|
 | id / cấu trúc trong `index.html` | §2 bảng DOM; module `getElementById` tương ứng; §1.7 nếu thêm `<script>`/`<link>` (nháy đôi, đường dẫn tương đối); khởi động lại server |
+| thẻ chia sẻ / SEO trong `<head>`, `og-image.jpg`, icon, `site.webmanifest`, `robots.txt` | §2 (thẻ chia sẻ); giữ `%SITE_URL%` / `%OG_VERSION%` cho URL tuyệt đối; tạo lại ảnh bằng `npm run share-images` ([11](./11-kiem-thu-qa.md)); sau deploy kiểm bằng Facebook Sharing Debugger ([10](./10-van-hanh-deploy.md)) |
+| nấc co HUD (`FIT_LEVELS`, lớp `.hud-fit-*`) hoặc thêm chip mới | §4.6 — chip mới phải có chỗ trong thứ tự co (ẩn được ở nấc nào?); chip có thể bị ẩn thì popover của nó phải đóng theo (§4.4); QA 360 px có và không có chip 🤖 |
+| tooltip kệ (`showProductTip`, `TOUCH`, class `.touch` + bấm thẻ để mở), CSS `.prod-tip` trên mobile | §10, §18; [07](./07-frontend-ve-canvas.md) §7.11 (chạm lần 1 xem / lần 2 mở, dung sai 24 px, 350 ms, tự ẩn 8 s nằm ở `office.js`) — đừng ẩn lại `.prod-tip` ở ≤ 899 px: đó là cách duy nhất để người xem trên cảm ứng thấy tên và giá |
 | biến CSS, breakpoint, container query, z-index | §3.1, §3.3, §3.5 của tài liệu này; nếu đổi 899 px → `util.js`, `devbar.js`, `profile.js` + §18 |
 | thêm / bỏ chip HUD hoặc nội dung popover | §4.3–§4.5; nếu lộ số liệu hệ thống → kiểm `publicStatus` (`src/server.ts`) + §1.5 + [02](./02-kien-truc-va-giao-thuc.md) |
 | hằng sidebar (`SB_*`, `TK_*`) | §5 + `aria-valuemin/max` trong `index.html` |
@@ -660,7 +693,7 @@ Không có test tự động nào chạm vào `public/` (`npm test` = typecheck 
 7. **Toast đè bong bóng thoại** (`style.css:257-263`, `top: 48px`, z 7) — canvas chỉ né HUD/ticker qua `setInsets`. Gợi ý: tính vùng toast vào insets hoặc đổi vị trí toast.
 8. `recap.source` vẫn nằm trong payload WS gửi mọi người xem; UI chỉ không hiển thị (`recaps.js:44`). Cần kiểm tra server có lược trường này không nếu muốn ẩn triệt để.
 9. `profile.js:154`: mọi giá trị `gender` khác `'nữ'` hiển thị "Nam" (kiểu `Gender = 'nam' | 'nữ'` nên hiện vô hại).
-10. `products.js:37-59` vẫn dựng DOM tooltip trên mobile dù CSS ẩn `.prod-tip` — lãng phí nhỏ.
+10. ~~`products.js` vẫn dựng DOM tooltip trên mobile dù CSS ẩn `.prod-tip`~~ — đã hết (rà soát 2026-11-03): thẻ món trên kệ nay hiện cả trên mobile (chạm lần 1 xem, lần 2 mở, §10). Còn mở: chạm-lần-1/lần-2 mới QA bằng Chrome headless giả lập cảm ứng — **cần kiểm tra** trên Safari iOS và Chrome Android thật.
 11. Khi lọc theo kênh, thẻ cảnh **đang ẩn** vẫn nhận dòng và tự mở (`setCollapsed(card, false)`); bỏ lọc có thể thấy nhiều thẻ cũ mở hơn `KEEP_OPEN` tới lần `autoCollapse` kế (chỉ chạy khi có thẻ kết thúc).
 12. CSS hiện đại (`color-mix`, container query, `100dvh`, `backdrop-filter`) không có fallback — chấp nhận hay cần kiểm tra trình duyệt mục tiêu?
 13. Phụ thuộc Google Fonts (`index.html:10-12`): khi bị chặn chữ dùng font hệ thống; cân nhắc self-host trong `public/` để hưởng cache `/v/<ver>/` và tránh rò rỉ IP người xem.

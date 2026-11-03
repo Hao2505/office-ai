@@ -67,6 +67,23 @@ export const ROLE_ORDER: RoleKey[] = [
 ];
 
 // ---------------------------------------------------------------- 10 nhân vật
+/**
+ * v4: tag gợi ý "món đồ trên bàn" theo vai (nhân viên mới tuyển, hoặc khi đổi danh mục sản phẩm mà món cũ không còn).
+ * Khớp với tags trong data/products.json.
+ */
+export const DESK_ITEM_TAGS: Record<RoleKey, string[]> = {
+  boss: ['tra', 'do-uong', 'phong-hop', 'trinh-chieu'],
+  hr: ['thu-gian', 'decor', 'qua-tang', 'trang-suc'],
+  techlead: ['sao-luu', 'dev', 'man-hinh', 'ban-lam-viec'],
+  senior: ['man-hinh', 'gaming', 'dev', 'ban-lam-viec'],
+  junior: ['chuot', 'gaming', 'ngu-trua', 'ban-lam-viec'],
+  qa: ['chuot', 'decor', 'ban-lam-viec', 'dev'],
+  designer: ['design', 'decor', 'man-hinh', 'trang-suc'],
+  saleslead: ['trinh-chieu', 'phong-hop', 'cong-tac', 'du-lich'],
+  salesnew: ['gaming', 'chuot', 'ngu-trua', 'mo-hoi'],
+  marketing: ['trang-diem', 'livestream', 'thoi-trang', 'lam-dep'],
+};
+
 export const INITIAL_ROSTER: Persona[] = [
   {
     id: 'hung', name: 'Hùng', fullName: 'Trần Quốc Hùng', role: 'boss', roleLabel: ROLE_INFO.boss.label,
@@ -80,7 +97,7 @@ export const INITIAL_ROSTER: Persona[] = [
     dislikes: ['thấy nhân viên cầm điện thoại', 'chữ "không kịp"', 'chi phí phát sinh', 'bị hỏi chuyện tăng lương'],
     traits: { diligence: 0.55, laziness: 0.35, gossip: 0.3, temper: 0.55, humor: 0.4, ambition: 0.9 },
     look: { skin: '#e3b48f', hair: '#8c8c8c', hairStyle: 'short', shirt: '#1e3a8a', pants: '#1f2937', accessory: 'tie' },
-    deskId: ROLE_INFO.boss.deskId, deskItemProductId: 'dong-ho-thong-minh', kpiTarget: ROLE_INFO.boss.kpiTarget,
+    deskId: ROLE_INFO.boss.deskId, deskItemProductId: 'am-dun-nuoc-bluestone', kpiTarget: ROLE_INFO.boss.kpiTarget,
   },
   {
     id: 'ngoc', name: 'Ngọc', fullName: 'Lê Bảo Ngọc', role: 'hr', roleLabel: ROLE_INFO.hr.label,
@@ -94,7 +111,7 @@ export const INITIAL_ROSTER: Persona[] = [
     dislikes: ['đi trễ', 'lý do kẹt xe', 'chấm công hộ', 'bị hỏi lương của người khác'],
     traits: { diligence: 0.85, laziness: 0.15, gossip: 0.9, temper: 0.35, humor: 0.4, ambition: 0.7 },
     look: { skin: '#f7d7c4', hair: '#3a2318', hairStyle: 'bun', shirt: '#ec4899', pants: '#f1e9dc', accessory: 'none' },
-    deskId: ROLE_INFO.hr.deskId, deskItemProductId: 'may-massage-co-vai-gay', kpiTarget: ROLE_INFO.hr.kpiTarget,
+    deskId: ROLE_INFO.hr.deskId, deskItemProductId: 'nen-thom-heny-garden', kpiTarget: ROLE_INFO.hr.kpiTarget,
   },
   {
     id: 'khoa', name: 'Khoa', fullName: 'Phạm Đăng Khoa', role: 'techlead', roleLabel: ROLE_INFO.techlead.label,
@@ -108,7 +125,7 @@ export const INITIAL_ROSTER: Persona[] = [
     dislikes: ['sales hứa bừa', 'deploy chiều thứ Sáu', 'họp không có agenda', 'câu "máy em chạy được mà"'],
     traits: { diligence: 0.9, laziness: 0.1, gossip: 0.15, temper: 0.75, humor: 0.35, ambition: 0.55 },
     look: { skin: '#d9a47a', hair: '#141414', hairStyle: 'short', shirt: '#374151', pants: '#1e293b', accessory: 'glasses' },
-    deskId: ROLE_INFO.techlead.deskId, deskItemProductId: 'ban-phim-co', kpiTarget: ROLE_INFO.techlead.kpiTarget,
+    deskId: ROLE_INFO.techlead.deskId, deskItemProductId: 'ssd-di-dong-ssk', kpiTarget: ROLE_INFO.techlead.kpiTarget,
   },
   {
     id: 'tung', name: 'Tùng', fullName: 'Nguyễn Thanh Tùng', role: 'senior', roleLabel: ROLE_INFO.senior.label,
@@ -122,7 +139,7 @@ export const INITIAL_ROSTER: Persona[] = [
     dislikes: ['họp standup', 'viết tài liệu', 'bị báo bug trước mặt sếp', 'bị hỏi "xong chưa"'],
     traits: { diligence: 0.55, laziness: 0.6, gossip: 0.35, temper: 0.3, humor: 0.75, ambition: 0.3 },
     look: { skin: '#c98d62', hair: '#2e1d14', hairStyle: 'curly', shirt: '#0d9488', pants: '#3b5b8c', accessory: 'headphones' },
-    deskId: ROLE_INFO.senior.deskId, deskItemProductId: 'tai-nghe-chong-on', kpiTarget: ROLE_INFO.senior.kpiTarget,
+    deskId: ROLE_INFO.senior.deskId, deskItemProductId: 'man-hinh-aoc', kpiTarget: ROLE_INFO.senior.kpiTarget,
   },
   {
     id: 'bao', name: 'Bảo', fullName: 'Võ Gia Bảo', role: 'junior', roleLabel: ROLE_INFO.junior.label,
@@ -136,7 +153,7 @@ export const INITIAL_ROSTER: Persona[] = [
     dislikes: ['bị review code trước mặt mọi người', 'merge conflict', 'bị gọi là "gà"', 'dậy sớm'],
     traits: { diligence: 0.7, laziness: 0.4, gossip: 0.5, temper: 0.2, humor: 0.6, ambition: 0.6 },
     look: { skin: '#f0c3a0', hair: '#d6a145', hairStyle: 'spiky', shirt: '#facc15', pants: '#1f2937', accessory: 'none' },
-    deskId: ROLE_INFO.junior.deskId, deskItemProductId: 'gia-do-laptop', kpiTarget: ROLE_INFO.junior.kpiTarget,
+    deskId: ROLE_INFO.junior.deskId, deskItemProductId: 'chan-goi-van-phong-cecila', kpiTarget: ROLE_INFO.junior.kpiTarget,
   },
   {
     id: 'vy', name: 'Vy', fullName: 'Đặng Thảo Vy', role: 'qa', roleLabel: ROLE_INFO.qa.label,
@@ -151,7 +168,7 @@ export const INITIAL_ROSTER: Persona[] = [
       'Tùng đi cà phê lúc đang có bug'],
     traits: { diligence: 0.8, laziness: 0.25, gossip: 0.55, temper: 0.55, humor: 0.7, ambition: 0.5 },
     look: { skin: '#f5cdb0', hair: '#121212', hairStyle: 'ponytail', shirt: '#dc2626', pants: '#e5e7eb', accessory: 'glasses' },
-    deskId: ROLE_INFO.qa.deskId, deskItemProductId: 'chuot-khong-day', kpiTarget: ROLE_INFO.qa.kpiTarget,
+    deskId: ROLE_INFO.qa.deskId, deskItemProductId: 'lot-chuot-hinh-meo', kpiTarget: ROLE_INFO.qa.kpiTarget,
   },
   {
     id: 'linh', name: 'Linh', fullName: 'Hoàng Mỹ Linh', role: 'designer', roleLabel: ROLE_INFO.designer.label,
@@ -165,7 +182,7 @@ export const INITIAL_ROSTER: Persona[] = [
     dislikes: ['dev tự ý đổi màu', 'font chữ lòe loẹt', 'deadline banner trong 30 phút', 'bị nhắc đi trễ'],
     traits: { diligence: 0.6, laziness: 0.5, gossip: 0.6, temper: 0.45, humor: 0.5, ambition: 0.45 },
     look: { skin: '#f9dcc8', hair: '#7a3b69', hairStyle: 'bob', shirt: '#8b5cf6', pants: '#f5f0e6', accessory: 'none' },
-    deskId: ROLE_INFO.designer.deskId, deskItemProductId: 'man-hinh-27-inch', kpiTarget: ROLE_INFO.designer.kpiTarget,
+    deskId: ROLE_INFO.designer.deskId, deskItemProductId: 'hop-trang-suc-eleanor', kpiTarget: ROLE_INFO.designer.kpiTarget,
   },
   {
     id: 'phat', name: 'Phát', fullName: 'Huỳnh Tấn Phát', role: 'saleslead', roleLabel: ROLE_INFO.saleslead.label,
@@ -179,7 +196,7 @@ export const INITIAL_ROSTER: Persona[] = [
     dislikes: ['bị dev nói "không làm được"', 'khách biến mất không trả lời', 'KPI tháng không đạt', 'họp kỹ thuật dài'],
     traits: { diligence: 0.62, laziness: 0.4, gossip: 0.5, temper: 0.3, humor: 0.7, ambition: 0.9 },
     look: { skin: '#d2996c', hair: '#0b0b0b', hairStyle: 'short', shirt: '#0ea5e9', pants: '#e7dcc6', accessory: 'none' },
-    deskId: ROLE_INFO.saleslead.deskId, deskItemProductId: 'micro-karaoke', kpiTarget: ROLE_INFO.saleslead.kpiTarget,
+    deskId: ROLE_INFO.saleslead.deskId, deskItemProductId: 'may-chieu-mini', kpiTarget: ROLE_INFO.saleslead.kpiTarget,
   },
   {
     id: 'tu', name: 'Tú', fullName: 'Lý Minh Tú', role: 'salesnew', roleLabel: ROLE_INFO.salesnew.label,
@@ -193,7 +210,7 @@ export const INITIAL_ROSTER: Persona[] = [
     dislikes: ['gọi điện cho khách lạ', 'bị gọi lên phòng họp', 'thấy chị Ngọc cầm sổ', 'dậy trước 7 giờ'],
     traits: { diligence: 0.3, laziness: 0.8, gossip: 0.45, temper: 0.2, humor: 0.6, ambition: 0.2 },
     look: { skin: '#b9794f', hair: '#1c1c1c', hairStyle: 'short', shirt: '#22c55e', pants: '#4b5563', accessory: 'cap' },
-    deskId: ROLE_INFO.salesnew.deskId, deskItemProductId: 'quat-tan-nhiet-dien-thoai', kpiTarget: ROLE_INFO.salesnew.kpiTarget,
+    deskId: ROLE_INFO.salesnew.deskId, deskItemProductId: 'chuot-attack-shark-x11', kpiTarget: ROLE_INFO.salesnew.kpiTarget,
   },
   {
     id: 'tram', name: 'Trâm', fullName: 'Ngô Bích Trâm', role: 'marketing', roleLabel: ROLE_INFO.marketing.label,
@@ -207,7 +224,7 @@ export const INITIAL_ROSTER: Persona[] = [
     dislikes: ['clip ít view', 'wifi chậm lúc livestream', 'bị nói "lại mua đồ nữa hả"', 'deadline content gấp'],
     traits: { diligence: 0.6, laziness: 0.5, gossip: 0.85, temper: 0.3, humor: 0.65, ambition: 0.55 },
     look: { skin: '#f3cfb3', hair: '#9a5b2e', hairStyle: 'long', shirt: '#f97316', pants: '#3b5b8c', accessory: 'bow' },
-    deskId: ROLE_INFO.marketing.deskId, deskItemProductId: 'den-ring-light', kpiTarget: ROLE_INFO.marketing.kpiTarget,
+    deskId: ROLE_INFO.marketing.deskId, deskItemProductId: 'bang-phan-mat-cheeryep', kpiTarget: ROLE_INFO.marketing.kpiTarget,
   },
 ];
 

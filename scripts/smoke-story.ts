@@ -80,6 +80,8 @@ const { getArchive } = await import('../src/sim/archive.js');
 const { configureNews, parseRss } = await import('../src/news/index.js');
 const { SCENE_DEFS } = await import('../src/sim/scenes.js');
 const { BEAT_KINDS } = await import('../src/content/catalog.js');
+const { SITUATION_KINDS, SITUATIONS } = await import('../src/content/situations.js');
+const { Showrunner, ARC_MAX_AGE_DAYS } = await import('../src/sim/story.js');
 type DecisionInfo = import('../src/sim/director.js').DecisionInfo;
 
 const HISTORY_DIR = mkdtempSync(join(tmpdir(), 'vpa-smoke-story-'));
@@ -166,6 +168,16 @@ interface RunResult {
   warned: string[];
   promoted: string[];
   resignTalks: number;
+  /**
+   * v5: tình huống công ty — cảnh họp xử lý / truyền lửa; số lần CHỐT sau cuộc họp (dòng sự kiện "🧯 <chủ trì> chốt: …"),
+   * số lần chốt nhanh dự phòng ("… qua điện thoại"), số mạch tình huống đi tới kết cục (có plan + outcome, lấy mẫu trong lúc chạy)
+   */
+  crisisMeetings: number;
+  pepTalks: number;
+  situationDecisions: number;
+  situationFallbacks: number;
+  situationOutcomes: number;
+  situationLogs: string[];
   hires: number;            // người mới được tuyển (welcome)
   interviews: number;
   deferred: number;         // cảnh cho nghỉ / thăng chức bị hoãn sang mai
@@ -210,6 +222,8 @@ async function runOnce(seed: number, verbose: boolean, opts: { slump?: boolean; 
 
   const scenes = new Map<string, { type: SceneType; day: number; lines: number; ended: 'ok' | 'aborted' | null; news: boolean; newsCardOk: boolean }>();
   const logs: LogEntry[] = [];
+  // đếm ngay lúc phát (mảng logs bị cắt khi quá 6000 dòng → đếm từ logs sẽ hụt khi chạy nhiều ngày)
+  let sitDecided = 0, sitFallback = 0;
   const toasts: string[] = [];
   const names = new Map<string, string>();
   let newsLogCards = 0;
@@ -220,6 +234,10 @@ async function runOnce(seed: number, verbose: boolean, opts: { slump?: boolean; 
       case 'log': {
         const e = msg.entry;
         logs.push(e);
+        if (e.kind === 'event' && e.icon === '🧯') {
+          if (/ chốt: /.test(e.text)) sitDecided++;
+          else if (/qua điện thoại/.test(e.text)) sitFallback++;
+        }
         if (logs.length > 6000) logs.splice(0, 1000);
         if (verbose) origLog(`  [N${e.day} ${hhmm(e.minute)}] ${e.kind}${e.channel && e.channel !== 'office' ? `/${e.channel}` : ''} ${e.icon ?? ''} ${e.speakerName ? e.speakerName + ': ' : ''}${e.text}${e.news ? `  🗞️ ${e.news.title} (${e.news.source})` : ''}`);
         if (e.kind === 'scene_start' && e.news && typeof e.news.url === 'string' && /^https?:\/\//.test(e.news.url)) newsLogCards++;
@@ -282,6 +300,7 @@ async function runOnce(seed: number, verbose: boolean, opts: { slump?: boolean; 
   const sceneHold = new Map<string, { sid: string; since: number }>();
   let maxHoldMs = 0;
   let queueMax = 0, newsUsedMax = 0, newsDiscussedMax = 0, arcsOpenMax = 0, arcsKeptMax = 0, recentBeatsMax = 0;
+  const sitResolved = new Set<string>(); // mạch tình huống đã có phương án + kết cục (sổ mạch chỉ giữ 8 → lấy mẫu trong lúc chạy)
   let steps = 0;
   const yieldLoop = (): Promise<void> => new Promise((r) => setImmediate(r));
   async function step(n = 1): Promise<void> {
@@ -308,6 +327,7 @@ async function runOnce(seed: number, verbose: boolean, opts: { slump?: boolean; 
         arcsOpenMax = Math.max(arcsOpenMax, st.story_arcsOpen);
         arcsKeptMax = Math.max(arcsKeptMax, st.story_arcsKept);
         recentBeatsMax = Math.max(recentBeatsMax, st.story_recentBeats);
+        for (const a of director.arcs()) if (a.plan && a.outcome && SITUATION_KINDS.includes(a.kind)) sitResolved.add(a.id);
       }
       await yieldLoop();
     }
@@ -398,6 +418,12 @@ async function runOnce(seed: number, verbose: boolean, opts: { slump?: boolean; 
     warned: logs.filter((e) => e.kind === 'hr' && /bị HR nhắc nhở KPI/.test(e.text)).map((e) => e.text.split(' ')[0]),
     promoted: decisions.filter((d) => d.decision.action === 'promote').map((d) => nameOf(d.decision.id)),
     resignTalks: byType.resign_talk?.n ?? 0,
+    crisisMeetings: byType.crisis_meeting?.n ?? 0,
+    pepTalks: byType.pep_talk?.n ?? 0,
+    situationDecisions: sitDecided,
+    situationFallbacks: sitFallback,
+    situationOutcomes: sitResolved.size,
+    situationLogs: logs.filter((e) => e.icon === '🧯').map((e) => `N${e.day} ${hhmm(e.minute)} ${e.text}`),
     hires: byType.welcome?.n ?? 0,
     interviews: byType.interview?.n ?? 0,
     deferred: st.decisionsDeferred ?? 0,
@@ -419,6 +445,63 @@ async function runOnce(seed: number, verbose: boolean, opts: { slump?: boolean; 
 // ================================================================== chạy nhiều hạt
 const T0 = performance.now();
 origLog(`🎬 Smoke test câu chuyện (v3) — ${SEEDS} hạt từ ${SEED0}, ${DAYS} ngày game mỗi hạt, tốc độ x${SPEED}, offline`);
+/**
+ * v5: một văn phòng riêng (không AI) ép mạch "kẹt tiền"; giả lập kết quả cảnh như AI viết (source 'llm'): cuộc họp chốt plan_c
+ * (luôn ≠ lựa chọn dự phòng, vì ép lựa chọn dự phòng khác đi) → truyền lửa cả phòng; truyền lửa trả NGƯỢC lựa chọn dự phòng.
+ * Kỳ vọng: arc.plan = plan_c, planBy = llm, arc.pep = đúng giá trị AI trả.
+ */
+async function llmVerdictCheck(): Promise<{ ok: boolean; info: string }> {
+  let vt = Date.now();
+  const brain = createBrain(config, { now: () => vt, quiet: true });
+  const world = new World({ config, brain, emit: () => undefined, now: () => vt });
+  const director = new Director(world, brain);
+  world.attachDirector({
+    tick: (dt) => director.tick(dt), onDayStart: (d) => director.onDayStart(d),
+    onDayEnd: (d: number, results: KpiResult[]) => director.onDayEnd(d, results),
+    onEvent: (n, data) => director.onEvent(n, data), onBossLeft: (r) => director.onBossLeft(r), onBossReturned: () => director.onBossReturned(),
+    onSlackerSpotted: (b, v) => director.onSlackerSpotted(b, v), onAgentArrived: (id, late) => director.onAgentArrived(id, late),
+    publicScenes: () => director.publicScenes(), recaps: () => director.recaps(), rumors: () => director.rumors(),
+    serialize: () => director.serialize(), restore: (d) => director.restore(d),
+  });
+  const aiPep = new Map<string, string>();
+  const orig = brain.generateScene.bind(brain);
+  brain.generateScene = async (req, ctx, via) => {
+    const res = await orig(req, ctx, via);
+    if (req.type === 'crisis_meeting') return { ...res, source: 'llm', verdict: 'plan_c' };
+    if (req.type === 'pep_talk') {
+      const v = req.crisis?.pick === 'unmoved' ? 'inspired' : 'unmoved';
+      aiPep.set(req.sceneId, v);
+      return { ...res, source: 'llm', verdict: v };
+    }
+    return res;
+  };
+  // ép lựa chọn dự phòng của cuộc họp ≠ plan_c
+  const inner = director as unknown as {
+    story: { schedule: (now: number, delay?: number) => void; accept: (plan: unknown, ctx: unknown) => { id: string }[]; pickPlan: (...a: unknown[]) => unknown };
+    storyCtx: () => unknown;
+  };
+  const sit = SITUATIONS.find((d) => d.kind === 'cash_crunch');
+  const notC = sit?.plans.find((pl) => pl.code !== 'plan_c');
+  if (!sit || !notC) return { ok: false, info: 'thiếu tình huống cash_crunch' };
+  inner.story.pickPlan = () => notC;
+  let arcId = '';
+  for (let i = 0; i < 2 * 1440 * 2 * 10 && world.day() <= 2; i++) {
+    vt += DT;
+    world.advance(DT);
+    if (!arcId && world.minuteOfDay() >= 8 * 60 + 35) {
+      inner.story.schedule(world.time(), 1e6); // không cho AI biên kịch mở tình huống khác
+      arcId = inner.story.accept({ beats: [{ kind: 'cash_crunch', intensity: 1, note: '' }], source: 'offline' }, inner.storyCtx())[0]?.id ?? 'x';
+    }
+    const arc = director.arcs().find((a) => a.id === arcId);
+    if (arc && arc.pep) break;
+    await new Promise((r) => setImmediate(r));
+  }
+  const arc = director.arcs().find((a) => a.id === arcId);
+  const pepAi = [...aiPep.values()][0];
+  const ok = !!arc && arc.plan === 'plan_c' && arc.planBy === 'llm' && !!pepAi && arc.pep === pepAi;
+  return { ok, info: arc ? `plan ${arc.plan ?? '—'} (${arc.planBy ?? '—'}), pep ${arc.pep ?? '—'} / AI ${pepAi ?? '—'}` : 'không mở được mạch' };
+}
+
 const runs: RunResult[] = [];
 for (let i = 0; i < SEEDS; i++) {
   const seed = SEED0 + i;
@@ -463,6 +546,8 @@ if (first.hrLogs.length > 28) line(`  … (+${first.hrLogs.length - 28} dòng)`)
 line('');
 line(`Hạt ${first.seed} — mạch truyện 🎬 (${first.storyLogs.length} dòng hệ thống, chỉ mạch đậm):`);
 for (const l of first.storyLogs.slice(0, 6)) line(`  ${l}`);
+line(`Hạt ${first.seed} — tình huống công ty 🧯 (${first.situationLogs.length} dòng: cảnh họp + câu chốt phương án):`);
+for (const l of first.situationLogs.slice(0, 12)) line(`  ${l}`);
 line('');
 line(`Hạt ${first.seed} — thời sự: ${first.newsScenes} cảnh news_chat (${first.newsWithCard} có thẻ tin, ${first.newsLogCards} log có thẻ), ${first.newsHints} gợi ý "nghe nói…" cho pantry/lunch`);
 for (const s of first.sample) line(`     ${s}`);
@@ -502,7 +587,7 @@ check('mỗi hạt: ≥ 1 cảnh news_chat kèm thẻ tin (scene.news + log.news
 check('tin đã bàn được markUsed (news.recent() / isUsed) và không bàn lại', all((r) => r.newsMarked), '');
 check('mỗi hạt: AI biên kịch lên ≥ 3 beat và ≥ 1 mạch kết (kế hoạch offline)', all((r) => r.beatsPlanned >= 3 && r.arcsResolved >= 1),
   infoOf((r) => `${r.beatsPlanned}/${r.arcsResolved}`));
-check('mọi beat đều thuộc thực đơn và mạch mở ≤ 2, sổ mạch ≤ 8, beat gần đây ≤ 10', all((r) => r.arcsOpenMax <= 2 && r.arcsKeptMax <= 8 && r.recentBeatsMax <= 10) && BEAT_KINDS.length === 17,
+check('mọi beat đều thuộc thực đơn và mạch mở ≤ 2, sổ mạch ≤ 8, beat gần đây ≤ 10', all((r) => r.arcsOpenMax <= 2 && r.arcsKeptMax <= 8 && r.recentBeatsMax <= 10) && BEAT_KINDS.length === 28 && BEAT_KINDS.includes('shopping_story') && SITUATION_KINDS.every((k: string) => BEAT_KINDS.includes(k)),
   infoOf((r) => `${r.arcsOpenMax}/${r.arcsKeptMax}/${r.recentBeatsMax}`));
 const victims = runs.map((r) => [...new Set([...r.fired, ...r.laidOff, ...r.resigned, ...r.warned])].sort().join(','));
 const differs = runs.length < 2 || new Set(victims).size >= 2;
@@ -521,6 +606,52 @@ const kpiMeans = [...kpiAll.entries()].map(([n, xs]) => [n, xs.reduce((a, b) => 
 check('% KPI trung bình theo tên (đội hình ban đầu) không thiên lệch hệ thống: người thấp nhất ≥ 70% người cao nhất (qua các hạt)',
   kpiMeans.length < 2 || kpiMeans[0][1] >= 0.7 * kpiMeans[kpiMeans.length - 1][1], kpiMeans.map(([n, v]) => `${n} ${v.toFixed(2)}`).join(' · '));
 check('có hạt xảy ra cảnh xin nghỉ (resign_talk) — cửa xin nghỉ không còn bất khả thi', runs.some((r) => r.resignTalks >= 1), infoOf((r) => r.resignTalks));
+// v5: tình huống công ty (kẹt tiền, bóc phốt, chia phe…) chạy trọn: có họp xử lý / chốt phương án, không lỗi
+check('v5: tình huống công ty đi trọn — ≥ một nửa số hạt có ≥ 1 lần chốt SAU CUỘC HỌP và ≥ 1 mạch tới kết cục; cuộc họp nào diễn xong cũng có câu chốt',
+  runs.filter((r) => r.situationDecisions >= 1 && r.situationOutcomes >= 1).length >= Math.ceil(runs.length / 2)
+    && all((r) => r.situationDecisions >= (r.scenes.crisis_meeting?.ok ?? 0)),
+  infoOf((r) => `${r.situationDecisions} chốt/${r.situationFallbacks} dự phòng/${r.situationOutcomes} kết cục/${r.scenes.crisis_meeting?.ok ?? 0} họp xong/${r.pepTalks} truyền lửa`));
+// v5: tình huống không có người trong cuộc (cast 'none'): hiệu ứng "group" chỉ có người khi phương án giao việc sales / tăng ca
+// (story.ts groupOf) hoặc nói riêng (pep_one gán người được nói chuyện); "center" chỉ có người sau pep_one — còn lại rơi vào
+// nhóm rỗng (không ai chịu hậu quả, lặng lẽ mất tác dụng)
+const deadFx = SITUATIONS.flatMap((d) => {
+  if (d.cast !== 'none') return [];
+  const out: string[] = [];
+  if (d.outbreak.fx?.group || d.outbreak.fx?.center) out.push(`${d.kind}/bùng phát`);
+  for (const pl of d.plans) {
+    const groupNow = pl.follow === 'sales_push' || pl.follow === 'overtime';
+    const later = groupNow || pl.follow === 'pep_one';
+    if (pl.now?.center || (pl.now?.group && !groupNow)) out.push(`${d.kind}/${pl.code}: ngay khi chốt`);
+    if ([pl.good.fx, pl.bad.fx].some((fx) => (fx?.group && !later) || (fx?.center && pl.follow !== 'pep_one'))) out.push(`${d.kind}/${pl.code}: kết cục`);
+  }
+  return out;
+});
+check('v5: không hiệu ứng "group" / "center" nào rơi vào nhóm rỗng (tình huống không có người trong cuộc)', deadFx.length === 0, deadFx.join(', '));
+// v5: phương án / kết quả truyền lửa do AI chốt (source llm) phải được GIỮ — trước đây Director lọc mất plan_a..d / inspired / unmoved.
+// Lỗi phát sinh TRONG lúc kiểm tra này (sau khẳng định "không có lỗi" ở trên) cũng làm nó đỏ.
+const problemsBefore = problems.length;
+const llmCheck = await llmVerdictCheck();
+const llmProblems = problems.slice(problemsBefore);
+check('v5: AI chốt phương án ≠ lựa chọn dự phòng → mạch dùng đúng phương án AI (planBy llm); kết quả truyền lửa của AI được giữ',
+  llmCheck.ok && !llmProblems.length, llmProblems.length ? `${llmCheck.info} · lỗi: ${llmProblems[0].slice(0, 200)}` : llmCheck.info);
+// v5: ngày văn phòng đóng cửa (cuối tuần realtime / server tắt) không làm mạch già đi; bước kế lùi đúng số ngày; tối đa 5 ngày
+{
+  const sr = new Showrunner(120);
+  const mk = (id: string, day: number) => ({ id, kind: 'cash_crunch', intensity: 1, note: 'x', status: 'started', createdDay: day, createdAt: (day - 1) * 1440 + 900, step: 1, total: 4, nextAt: day * 1440 + 600, source: 'offline' });
+  sr.restore({ arcs: [mk('fri', 5)] });
+  sr.holdAges(2); // thứ Bảy + Chủ nhật
+  const a = sr.openArcs()[0];
+  const shifted = !!a && a.createdDay === 7 && a.nextAt === 7 * 1440 + 600;
+  const keptMon = sr.expire(8).length === 0 && sr.expire(7 + ARC_MAX_AGE_DAYS).length === 0;
+  const droppedLater = sr.expire(7 + ARC_MAX_AGE_DAYS + 1).length === 1;
+  const sr2 = new Showrunner(120);
+  sr2.restore({ arcs: [mk('old', 5)] });
+  sr2.holdAges(30);
+  const capped = sr2.openArcs()[0]?.createdDay === 10;
+  check('v5: holdAges — mạch thứ Sáu còn mở sang thứ Hai, bước kế lùi đúng 2 ngày, rơi sau đủ ngày làm; nghỉ dài chỉ hoãn tối đa 5 ngày',
+    shifted && keptMon && droppedLater && capped, `lùi ${shifted} · còn mở ${keptMon} · rơi ${droppedLater} · trần 5 ngày ${capped}`);
+}
+check('v5: SCENE_DEFS có crisis_meeting + pep_talk', 'crisis_meeting' in SCENE_DEFS && 'pep_talk' in SCENE_DEFS);
 check(`kịch bản doanh thu 0 (${SLUMP_DAYS} ngày): ≥ 1 và ≤ 2 đợt cắt giảm, không ai bị cắt khi vào chưa đủ 10 ngày, không phỏng vấn / tuyển trong kỳ kém, hàng rào không vi phạm`,
   slump.laidOff.length >= 1 && slump.laidOff.length <= 2 && slump.laidOffTenure.every((t) => t >= 10) && slump.interviews === 0 && slump.hires === 0 && slump.guardViolations.length === 0,
   `cắt ${slump.laidOff.length} (${slump.laidOffTenure.join('/')}) · phỏng vấn ${slump.interviews} · tuyển ${slump.hires} · vi phạm ${slump.guardViolations.join('; ') || 0}`);

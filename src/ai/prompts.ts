@@ -61,6 +61,13 @@ const FALLBACK_COMPANY: CompanyInfoLike = {
 };
 
 /** Mẫu JSON của cảnh (có trong system vì cảnh là nhiệm vụ thường xuyên nhất; Groq json_object cần chữ "JSON"). */
+/** v4: cảm nhận giá cho AI (khớp src/content/shopping.ts PRICE_FEEL_TEXT) */
+const PRICE_FEEL: Record<'re' | 'vua' | 'cao', string> = {
+  re: 'rẻ (kiểu "rẻ bất ngờ")',
+  vua: 'vừa túi (kiểu "giá mềm")',
+  cao: 'hơi đắt, cấm gọi rẻ (kiểu "xót ví mà đáng")',
+};
+
 const SCENE_JSON = '{"lines":[{"speaker":"id","text":"lời thoại","emote":null,"product":false}],"summary":"",'
   + '"relationshipChanges":[{"from":"id","to":"id","delta":-3,"reason":""}],"moodChanges":[{"id":"id","delta":4}],'
   + '"memories":[{"id":"id","text":""}],"kpiChanges":[{"id":"id","delta":-5}],"rumor":null,"verdict":null,"hrDecisions":null}';
@@ -124,7 +131,7 @@ export const SCENE_DIRECTION: Record<SceneType, string> = {
   confront: '{A} (người bị đồn) đến hỏi tội {B} (người tung tin): {B} chối, đổ cho người khác hoặc chữa cháy; căng rồi chốt.',
   pingpong_match: 'vừa đánh bóng bàn vừa trash talk: đếm điểm, cá cược trà sữa, ăn mừng lố.',
   welcome: 'chào người mới: giới thiệu, dặn "luật ngầm" (sếp, KPI, đừng deploy thứ Sáu), trêu người mới; người mới bỡ ngỡ đúng tính cách.',
-  showroom_chat: 'đứng ngắm kệ ở phòng trưng bày: một người kể trải nghiệm thật với món trên kệ (cụ thể: xài bao lâu, lúc nào, thấy gì), người kia khịa hoặc nghi ngờ ("ăn hoa hồng hả"), hỏi giá nhưng không ai nói giá, "để tối săn sale"; chốt bằng câu đùa hoặc rủ mua chung.',
+  showroom_chat: 'đứng ngắm kệ ở phòng trưng bày, nói về món ở khối MÓN TRÊN KỆ / MÓN ĐỒ … ĐÃ CÓ theo "Chuyện quanh món này" trong Tình huống: chỉ người của khối "ĐÃ CÓ" mới kể đã dùng, còn lại là xem review, săn sale, mua chung…; người kia khịa hoặc nghi ("ăn hoa hồng hả"), hỏi giá mà không ai nói giá; chốt bằng câu đùa hoặc rủ mua chung.',
   // --- v3 (docs/v3-news.md)
   news_chat: 'tám chuyện thời sự về đúng 1 tin trong mục TIN, theo LUẬT TIN THẬT: mở kiểu "ê thấy tin… chưa", "báo X đăng đó"; chốt bằng câu đùa hoặc quay về việc.',
   hr_review: 'HR và sếp họp kín xét nhân sự theo HỒ SƠ: HR nêu ai đáng lo, ai đáng khen như nói chuyện (không đọc số như máy), sếp hỏi lại, chen golf hay "gia đình", rồi chốt từng quyết định có tình có lý; hrDecisions khớp thoại và TRẦN; thoại nói tiếng Việt (thưởng nóng, khen, cho cơ hội, nhắc nhở, cho nghỉ), không đọc mã action.',
@@ -132,14 +139,29 @@ export const SCENE_DIRECTION: Record<SceneType, string> = {
   raise_request: '{A} xin tăng lương với sếp: đưa bằng chứng cụ thể (KPI, dự án đã giao, thời gian làm, việc gánh thêm); sếp trả lời đúng kiểu của sếp (ví von, "chúng ta là một gia đình", hứa mơ hồ, hoặc đồng ý có điều kiện); có qua có lại, {A} dám cãi nhẹ; chốt bằng verdict rõ ở câu cuối.',
   promotion: 'công bố thăng chức hoặc thưởng cho {A} trước đồng nghiệp: sếp tuyên bố hoành tráng, {A} cảm ơn đúng tính cách, đồng nghiệp phản ứng thật (mừng, ganh tị nhẹ, khịa, đòi khao); chốt bằng câu đùa hoặc lời hứa khao.',
   layoff: 'cắt giảm nhân sự vì công ty lỗ: sếp và HR báo tin xấu cho {A} nhẹ nhàng, nhận lỗi về tình hình công ty, không chê năng lực; {A} phản ứng đúng tính cách (sốc, hiểu, hỏi chế độ, nói câu để đời); đồng nghiệp (nếu có) buồn, hứa giữ liên lạc; nhắc bàn giao; không tàn nhẫn.',
+  // --- v5: tình huống công ty (docs/04 §16)
+  crisis_meeting: 'họp kín xử lý TÌNH HUỐNG CÔNG TY như công ty thật: {A} (chủ trì) nêu chuyện bằng chi tiết cụ thể; mỗi người đề xuất đúng vai (HR lo con người, sales lo khách và tiền, tech lo tiến độ, marketing lo hình ảnh), có phản biện, cân nhắc cái giá của từng hướng; người trong cuộc (nếu có mặt) tự bảo vệ; {A} chốt đúng 1 phương án trong PHƯƠNG ÁN ở câu cuối và nói lý do bằng lời đời thường (không đọc mã plan_x); không nói tục, không bịa số tiền cụ thể.',
+  pep_talk: '"công tác tư tưởng": {A} nói chuyện để vực tinh thần / thuyết phục (cả phòng, nói riêng, hoặc ngồi giữa hai người đang căng); {A} nói đúng chất mình, có ví von, kể chuyện, hứa có điều kiện; người nghe phản ứng THẬT theo tâm trạng và tính cách (cảm động, gật gù cho qua, hỏi xoáy, im lặng); kết quả (verdict) lộ rõ ở câu cuối.',
 };
 
 /** Cảnh có kết quả (verdict) do AI quyết, với giá trị mặc định khi model không trả / trả sai */
-export const VERDICT_RULES: Partial<Record<SceneType, { values: [string, string]; fallback: string; hint: string }>> = {
+export const VERDICT_RULES: Partial<Record<SceneType, { values: string[]; fallback: string; hint: string }>> = {
   interview: { values: ['hired', 'rejected'], fallback: 'hired', hint: 'câu cuối hé lộ kết quả ("Thứ Hai em đi làm luôn nha" / "Chị sẽ liên hệ lại sau nha em"); có điểm trừ rõ thì loại, Tình huống bắt buộc nhận thì "hired"' },
   resign_talk: { values: ['stay', 'leave'], fallback: 'stay', hint: 'quyết theo tâm trạng, thiện cảm với sếp/HR và lý do trong dữ liệu: còn cứu được thì "stay" (HR thuyết phục được), đã quá chán hoặc có chỗ mới thì "leave"; câu cuối phải lộ rõ' },
   raise_request: { values: ['approved', 'denied'], fallback: 'denied', hint: 'quyết theo KPI, doanh thu công ty và thiện cảm của sếp: bằng chứng mạnh và công ty đang ổn thì "approved" (có thể kèm điều kiện), còn lại "denied" kiểu hứa mơ hồ; câu cuối phải lộ rõ' },
+  // v5: mã phương án lấy từ req.crisis.options (prompt in khối PHƯƠNG ÁN); fallback = pick dự phòng
+  crisis_meeting: { values: ['plan_a', 'plan_b', 'plan_c', 'plan_d'], fallback: 'plan_a', hint: 'mã của phương án được chốt (chỉ các mã có trong PHƯƠNG ÁN), khớp câu chốt; chọn theo tình hình, tính cách người chủ trì và tranh luận trong cảnh — không mặc định chọn cái an toàn nhất' },
+  pep_talk: { values: ['inspired', 'unmoved'], fallback: 'inspired', hint: '"inspired" nếu đa số người nghe được thuyết phục / hai bên làm lành, "unmoved" nếu không — theo tâm trạng, quan hệ với người nói và chất lượng lời nói; câu cuối phải lộ rõ' },
 };
+
+/** dòng "verdict" trong YÊU CẦU: cảnh 2 kết quả "a" hoặc "b"; crisis_meeting chỉ liệt kê mã có trong PHƯƠNG ÁN */
+function verdictReq(req: SceneRequest, vr: { values: string[]; hint: string }): string {
+  const codes = req.type === 'crisis_meeting' && req.crisis?.options?.length
+    ? req.crisis.options.map((o) => o.code).filter((x) => vr.values.includes(x))
+    : vr.values;
+  const list = codes.length === 2 ? `"${codes[0]}" hoặc "${codes[1]}"` : `một trong ${codes.map((x) => `"${x}"`).join(' | ')}`;
+  return `verdict: ${list} — khớp với thoại; ${vr.hint}`;
+}
 
 /** Văn phong theo kênh — chỉ gửi kênh đang dùng (không nằm trong system). */
 const CHANNEL_STYLE: Record<Channel, string> = {
@@ -398,9 +420,27 @@ function projectLine(ctx: PromptContext): string {
 
 // ---------------------------------------------------------------- USER PROMPT: CẢNH
 
+/**
+ * Phần cố định của khối sản phẩm (CẤM, luật giá, ai nói / gọi món ra sao) không co theo bậc → cảnh có sản phẩm được thêm
+ * ngân sách cố định này, để bậc gọn không phải cắt tiểu sử / ký ức nhân vật chỉ vì khối món đồ (đo 2026-11-03: không có
+ * khoản này thì ~3/4 cảnh có sản phẩm bị ép về bậc gọn nhất).
+ */
+export const PRODUCT_TOKEN_ALLOWANCE = 150;
+
 export function buildSceneUserPrompt(req: SceneRequest, ctx: PromptContext): string {
   const n = Array.isArray(req.participants) ? req.participants.length : 3;
-  return fitSceneBudget(n, (lim) => renderScene(req, ctx, lim));
+  return fitSceneBudget(n, (lim) => renderScene(req, ctx, lim), req.product ? PRODUCT_TOKEN_ALLOWANCE : 0);
+}
+
+/** cắt "chuyện" theo bậc nhưng giữ nguyên các ngoặc ngắn (cớ, lưu ý an toàn như "(chỉ tự giễu, không chê ai)") — chỉ cắt phần kể */
+function cutAngle(text: string, max: number): string {
+  const t = String(text ?? '').replace(/\s+/g, ' ').trim();
+  if (t.length <= max) return t;
+  const parens = t.match(/\([^()]{1,120}\)/g) ?? [];
+  if (!parens.length) return cut(t, max);
+  const keep = parens.join(' ');
+  const base = t.replace(/\s*\([^()]{1,120}\)/g, '').replace(/\s+/g, ' ').trim();
+  return `${cut(base, Math.max(40, max - keep.length - 1))} ${keep}`;
 }
 
 function renderScene(req: SceneRequest, ctx: PromptContext, lim: SceneLimits): string {
@@ -489,6 +529,18 @@ function renderScene(req: SceneRequest, ctx: PromptContext, lim: SceneLimits): s
     L.push('Tin đồn: nếu trong cảnh có người tung tin về đồng nghiệp vắng mặt thì rumor = {aboutId, text ≤ 140 ký tự}; không thì rumor = null.');
   }
 
+  // v5: tình huống công ty — phương án để AI chốt (crisis_meeting) / điều cần thuyết phục (pep_talk)
+  if (req.crisis) {
+    const c = req.crisis;
+    if (req.type === 'crisis_meeting') {
+      const opts = (c.options ?? []).filter((o) => o && typeof o.code === 'string' && typeof o.label === 'string').slice(0, 4);
+      if (opts.length) L.push(`PHƯƠNG ÁN (chốt đúng 1, ghi mã vào verdict): ${opts.map((o) => `${o.code} = ${cut(o.label, 100)}`).join(' · ')}`);
+    } else if (req.type === 'pep_talk') {
+      // note / topic đã có trong Tình huống (sitPepTalk) → chỉ nhắc tên tình huống
+      L.push(`BỐI CẢNH: ${cut(c.title, 40)}`);
+    }
+  }
+
   if (req.product) {
     const p = req.product;
     const who = p.preferSpeaker && req.participants.includes(p.preferSpeaker) ? nameOf(p.preferSpeaker) : 'một người';
@@ -496,11 +548,28 @@ function renderScene(req: SceneRequest, ctx: PromptContext, lim: SceneLimits): s
     const shown = String(p.name ?? '').split(/\s+/)
       .filter((w, i) => i === 0 || !(/\d/.test(w) || /^(inch|ml|mah|cm|kg|gb|hz|w)$/i.test(w)))
       .join(' ');
-    if (req.type === 'showroom_chat') {
-      // pitch = nhận xét thật của chủ dự án (Director truyền note vào pitch) → chất liệu cho câu khoe
-      L.push(`SẢN PHẨM trên kệ: ${cut(shown || p.name, 70)} — người đã xài nhận xét: "${cut(p.pitch, 160)}". ${who} là người đã xài: kể lại bằng lời mình trong đúng 1 câu, giữ chi tiết thật (xài bao lâu, lúc nào, thấy gì), không chép nguyên văn; nói kiểu đời thường (cái/con + loại đồ), KHÔNG chép tên ở trên; câu đó product=true. Không giá, link, mã giảm, giọng quảng cáo; người khác khịa, hỏi giá mà không ai nói giá, rồi xuôi dần.`);
+    // có "facts" thì chỉ đưa tên (pitch lặp lại thông số đã có trong facts) — tiết kiệm token
+    const head = p.facts ? `${cut(shown || p.name, 60)}.` : `${cut(shown || p.name, 60)} — ${cut(p.pitch, 130)}.`;
+    // v4 (docs/04 §11): món đồ phải có "chuyện" — sự thật được nói, điều cấm, cảm nhận giá (không số), kiểu chuyện / cớ.
+    // "Có thật" và "Chuyện" co theo bậc prompt (lim); CẤM và luật giá không bao giờ cắt.
+    const mode = p.mode ?? (req.type === 'showroom_chat' ? 'showroom' : 'mention');
+    const facts = p.facts ? ` Có thật (chỉ nói trong phạm vi này): ${cut(p.facts, lim.prodFacts)}.` : '';
+    const avoid = p.avoid ? ` CẤM: ${cut(p.avoid, 150)}.` : '';
+    const feel = p.priceFeel ? ` Giá: ${PRICE_FEEL[p.priceFeel]}, không nói số.` : ' Không nhắc giá.';
+    // showroom_chat (mọi chế độ): "Chuyện quanh món này" đã nằm trong Tình huống (sitShowroom) → không lặp
+    const story = req.type === 'showroom_chat' ? '' : p.angle ? ` Chuyện: ${cutAngle(p.angle, lim.prodAngle)}.` : p.hook ? ` Cớ: ${cut(p.hook, 90)}.` : '';
+    const call = p.short ? `"${cut(p.short, 40)}" hoặc gọi trống (cái này, con này)` : 'kiểu đời thường (cái/con + loại đồ)';
+    const rules = `${who} nói đúng 1 câu product=true, gọi là ${call}, không chép tên trên; không link, mã giảm, "mua ngay", giọng quảng cáo, không bịa ngoài phần có thật; chi tiết đời thường mới, hài, đúng tính cách.`;
+    if (mode === 'unboxing') {
+      L.push(`MÓN VỪA GIAO TỚI: ${head}${facts}${avoid}${feel}${story} Cảnh khui hộp: ${who} mở hộp, thử ngay, khoe; ${rules} Người khác trêu "lại tiêu tiền", xin dùng thử.`);
+    } else if (mode === 'gift') {
+      L.push(`QUÀ TẶNG: ${head}${facts}${avoid}${feel}${story} ${rules} Người nhận bất ngờ, cảm ơn vụng về, trêu lại.`);
+    } else if (mode === 'owner') {
+      L.push(`MÓN ĐỒ ${who.toUpperCase()} ĐÃ CÓ: ${head}${facts}${avoid}${feel}${story} ${who} kể lại như người đã dùng thật (ấn tượng, bất ngờ, chuyện vui khi dùng), chỉ trong phạm vi có thật; ${rules} Người nghe nghi ngờ rồi xiêu lòng hoặc trêu.`);
+    } else if (mode === 'showroom') {
+      L.push(`MÓN TRÊN KỆ: ${head}${facts}${avoid}${feel}${story} ${rules} Người khác khịa, nghi ngờ hoặc tiếc tiền rồi xuôi dần.`);
     } else {
-      L.push(`SẢN PHẨM: ${cut(shown || p.name, 70)} — ${cut(p.pitch, 140)}. ${who} nhắc món này trong đúng 1 câu như kể trải nghiệm hoặc nhu cầu của mình, gắn với chuyện đang nói; nói kiểu đời thường (cái/con + loại đồ), KHÔNG chép tên ở trên; không giá, link, mã giảm, "mua ngay", không giọng quảng cáo; câu đó product=true, người khác phản ứng ngắn rồi quay lại chuyện chính.`);
+      L.push(`MÓN ĐỒ CÓ THỂ LEN VÀO: ${head}${facts}${avoid}${feel}${story} Dẫn tự nhiên: chuyện đang nói chạm đúng nhu cầu hoặc rắc rối đó trước, rồi mới tới câu nhắc món; ${rules} Người khác phản ứng ngắn rồi quay lại chuyện chính.`);
     }
   }
 
@@ -514,7 +583,7 @@ function renderScene(req: SceneRequest, ctx: PromptContext, lim: SceneLimits): s
     `${req.minLines}–${req.maxLines} câu`,
     `speaker chỉ dùng: ${req.participants.join(', ')}`,
     `hiệu ứng được phép: ${effects.length ? effects.join(', ') : 'không có'}`,
-    vr ? `verdict: "${vr.values[0]}" hoặc "${vr.values[1]}" — khớp với thoại; ${vr.hint}` : 'verdict: null',
+    vr ? verdictReq(req, vr) : 'verdict: null',
     req.type === 'hr_review'
       ? 'hrDecisions: mỗi người trong HỒ SƠ đúng 1 mục {id, action, reason ≤ 80 ký tự}; action ∈ "được phép" của người đó (không thì "none"), khớp thoại'
       : 'hrDecisions: null',

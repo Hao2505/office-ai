@@ -32,11 +32,17 @@ export const LIMITS = {
 
 // ---------------------------------------------------------------- v3: kết quả (verdict) theo loại cảnh
 
-/** Cảnh có verdict: [giá trị "tốt", giá trị "xấu", mặc định] — cảnh khác luôn null */
-export const VERDICT_BY_TYPE: Partial<Record<SceneType, { values: [Verdict, Verdict]; fallback: Verdict }>> = {
+/**
+ * Cảnh có verdict: các giá trị hợp lệ (cảnh 2 kết quả: [tốt, xấu]) + mặc định khi model không trả / trả sai.
+ * v5: crisis_meeting (mã phương án) và pep_talk có mặc định null — Director tự dùng lựa chọn dự phòng đã chọn sẵn
+ * (req.crisis.pick) để phân biệt "AI chốt" với "AI trả rác". Cảnh khác luôn null.
+ */
+export const VERDICT_BY_TYPE: Partial<Record<SceneType, { values: Verdict[]; fallback: Verdict | null }>> = {
   interview: { values: ['hired', 'rejected'], fallback: 'hired' },
   resign_talk: { values: ['stay', 'leave'], fallback: 'stay' },
   raise_request: { values: ['approved', 'denied'], fallback: 'denied' },
+  crisis_meeting: { values: ['plan_a', 'plan_b', 'plan_c', 'plan_d'], fallback: null },
+  pep_talk: { values: ['inspired', 'unmoved'], fallback: null },
 };
 
 /** Model có thể viết tiếng Việt / đồng nghĩa; map về đúng giá trị của loại cảnh, sai thì về mặc định. */
@@ -47,19 +53,53 @@ const VERDICT_SYNONYMS: Record<Verdict, RegExp> = {
   leave: /^(leave|quit|resign|nghi|di|roi|out)$|leave|quit|resign|nghiviec|xinnghi|thoiviec|rakhoi/,
   approved: /^(yes|ok|tang|duyet)$|approv|accept|dongy|duyet|grant|tangluong|raise/,
   denied: /^(no|sau|chua)$|deni|denied|reject|tuchoi|khong|hoan|later|chuaduoc|defer/,
+  // v5: "Plan A", "phương án A", "PA1", "a" → plan_a …
+  plan_a: /^(plana|a|pa_?a|pa1|phuongana|phuongan1|option_?a|1)$/,
+  plan_b: /^(planb|b|pa_?b|pa2|phuonganb|phuongan2|option_?b|2)$/,
+  plan_c: /^(planc|c|pa_?c|pa3|phuonganc|phuongan3|option_?c|3)$/,
+  plan_d: /^(pland|d|pa_?d|pa4|phuongand|phuongan4|option_?d|4)$/,
+  inspired: /^(yes|ok)$|inspir|convinc|moved|thuyetphuc|camdong|xuoi|lamlanh|reconcil|dongy/,
+  unmoved: /^(no|meh)$|unmov|notconv|khongthuyet|chuathuyet|vancang|khongnghe|bothay/,
 };
+
+/**
+ * Phủ định (đã bỏ dấu) đứng trong ≤ 3 TỪ ngay trước từ khoá kết quả ("chưa đủ thuyết phục", "không mấy cảm động",
+ * "chưa hoàn toàn xuôi", "not really convinced") hoặc dính liền phía trước trong cùng một từ ("uninspired", "khôngxuôi")
+ * thì đảo nghĩa. So theo từ nguyên vẹn (không theo đuôi chuỗi đã gộp) để "un"/"ko" nằm trong từ khác không bị tính.
+ */
+const NEG_WORDS = new Set(['khong', 'chua', 'chang', 'ko', 'k', 'hong', 'hok', 'not', 'no', 'never', 'cannot', 'cant', 'hardly', 'barely', 'nobody', 'noone']);
+const NEG_GLUED = /(?:khong|chua|chang|ko|not|un|non)$/;
+function negatedAt(tokens: string[], joined: string, idx: number): boolean {
+  let start = 0, ti = 0;
+  for (; ti < tokens.length; ti++) {
+    if (idx < start + tokens[ti].length) break;
+    start += tokens[ti].length;
+  }
+  if (ti >= tokens.length) return false;
+  if (NEG_GLUED.test(joined.slice(start, idx))) return true;
+  for (let k = Math.max(0, ti - 3); k < ti; k++) if (NEG_WORDS.has(tokens[k])) return true;
+  return false;
+}
 
 export function normalizeVerdict(type: SceneType, raw: unknown): Verdict | null {
   const rule = VERDICT_BY_TYPE[type];
   if (!rule) return null;
   const v = typeof raw === 'string' ? foldKey(raw) : '';
   if (!v) return rule.fallback;
-  const [good, bad] = rule.values;
-  if (v === good) return good;
-  if (v === bad) return bad;
-  // "xấu" trước để "khongnhan" không bị bắt bởi mẫu "nhan"
-  if (VERDICT_SYNONYMS[bad].test(v)) return bad;
-  if (VERDICT_SYNONYMS[good].test(v)) return good;
+  for (const val of rule.values) if (v === val || v === foldKey(val)) return val;
+  if (rule.values.length === 2) {
+    const [good, bad] = rule.values;
+    const tokens = words(String(raw));
+    const joined = tokens.join('');
+    // "xấu" trước để "khongnhan" không bị bắt bởi mẫu "nhan"; "xấu" bị phủ định ("không nghỉ việc nữa") → "tốt"
+    const mb = VERDICT_SYNONYMS[bad].exec(joined);
+    if (mb) return negatedAt(tokens, joined, mb.index) ? good : bad;
+    // "tốt" bị phủ định ("chưa xuôi", "chưa đủ thuyết phục", "not moved", "uninspired", "không ở lại") → "xấu"
+    const mg = VERDICT_SYNONYMS[good].exec(joined);
+    if (mg) return negatedAt(tokens, joined, mg.index) ? bad : good;
+    return rule.fallback;
+  }
+  for (const val of rule.values) if (VERDICT_SYNONYMS[val].test(v)) return val;
   return rule.fallback;
 }
 
@@ -247,6 +287,21 @@ export function cleanEmote(v: unknown): string | undefined {
   return undefined;
 }
 
+/**
+ * v4: con số giá tiền trong câu: "390k", "1,05tr", "5tr7", "1tr2", "2 triệu", "3 trăm nghìn", "150.000đ", "199.000₫", "₫199.000",
+ * "199.000", "1.290.000", "1290000". Không bắt "2K"/"4K" (độ phân giải: 1 chữ số + k), "27 inch", "3 tháng", "210Hz",
+ * "20.000mAh", "năm 2026" (4 chữ số trần). Cụm đếm (lượt xem, bước, người xem…) gỡ trước bằng NOT_PRICE_RE.
+ * Câu nhắc sản phẩm có giá bị bỏ (giá Shopee đổi theo voucher → dễ thành thông tin sai).
+ */
+export const PRICE_RE = /(?<![\p{L}\p{N}])(?:₫\s?\d+(?:[.,]\d+)*|\d{2,}(?:[.,]\d+)*\s?(?:k|nghìn|ngàn)|\d+\s?trăm(?:\s?(?:k|nghìn|ngàn))?|\d+(?:[.,]\d+)*\s?(?:tr|triệu|củ|đồng|vnđ|vnd|đ|₫)|\d+\s?tr\d{1,3}|\d{1,3}(?:[.,]\d{3}){2,}|\d{2,3}[.,]000|\d{6,})(?![\p{L}\p{N}])/iu;
+/**
+ * cụm đếm trông giống giá ("20k view", "1tr7 view", "1 triệu lượt xem", "10k bước", "10 người xem", "1 đồng nghiệp", "2 củ khoai")
+ * — gỡ ra trước khi dò giá. Từ đếm có biên cuối (không ăn "like new" của "390k like new").
+ */
+const NOT_PRICE_RE = /(?<![\p{L}\p{N}])\d+(?:[.,]\d+)*(?:\s?(?:k|nghìn|ngàn|triệu|tr\d{0,3}))?\s*(?:views?|lượt|follows?|followers?|likes?(?!\s*new)|subs?|fans?|shares?|cmts?|comments?|bình\s+luận|tim|lần|bước|km|dpi|người\s+(?:xem|theo\s+dõi))(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])\d+\s?(?:đồng\s+(?:nghiệp|hồ|phục|bộ|ý|loạt|đội)|củ\s+(?:khoai|tỏi|hành|gừng|cải|sắn|sạc|cà\s+rốt))(?![\p{L}\p{N}])/giu;
+/** câu có con số giá tiền (đã gỡ các cụm đếm; chuẩn hoá NFC để dấu tổ hợp không lọt) */
+export const hasPrice = (t: string): boolean => PRICE_RE.test(String(t ?? '').normalize('NFC').replace(NOT_PRICE_RE, ' '));
+
 /** Điểm "câu này có nhắc sản phẩm không": bigram tên = 2, token thương hiệu (có chữ Latin + số/hoa) = 3. */
 export function mentionScore(text: string, productName: string): number {
   const nameW = words(productName);
@@ -324,6 +379,18 @@ export function deriveSummary(req: SceneRequest, ctx: PromptContext, lines?: Sce
       break;
     case 'promotion': s = `Công bố thăng chức/thưởng cho ${name(req.aboutId && ps.includes(req.aboutId) ? req.aboutId : employee) || 'một nhân viên'}`; break;
     case 'layoff': s = `${name(req.aboutId && ps.includes(req.aboutId) ? req.aboutId : employee) || 'Một nhân viên'} bị cắt giảm vì công ty lỗ`; break;
+    // --- v5
+    case 'crisis_meeting': {
+      const opt = req.crisis?.options?.find((o) => o.code === verdict);
+      s = `${all} họp xử lý: ${cut(req.crisis?.title || 'tình huống công ty', 50)}${opt ? ` — chốt ${cut(opt.label, 60)}` : ''}`;
+      break;
+    }
+    case 'pep_talk': {
+      const v = req.crisis?.variant;
+      const head = v === 'mediate' ? 'Ngồi lại hoà giải' : v === 'one' ? 'Nói chuyện riêng' : 'Sếp truyền lửa';
+      s = `${head}: ${all}${verdict === 'inspired' ? ' — xuôi rồi' : verdict === 'unmoved' ? ' — chưa xuôi' : ''}`;
+      break;
+    }
     default: s = `${all} nói chuyện`;
   }
   const first = lines?.[0]?.text;
@@ -465,15 +532,27 @@ export function sanitizeScene(raw: unknown, req: SceneRequest, ctx: PromptContex
   let productIdx = -1;
   if (req.product?.name) {
     const pname = req.product.name;
+    const pshort = typeof req.product.short === 'string' ? req.product.short : '';
+    // v4: tên đời thường ("chuột gaming không dây") cũng tính — model được dặn gọi theo tên này
+    const score = (t: string): number => Math.max(mentionScore(t, pname), pshort ? mentionScore(t, pshort) + 1 : 0);
+    // v4: câu nhắc món đồ có con số giá (giá đổi theo voucher → dễ sai) → bỏ câu; còn < 2 câu thì cảnh hỏng (về câu mẫu)
+    let priceDropped = 0;
+    for (let i = draft.length - 1; i >= 0; i--) {
+      const l = draft[i];
+      if (hasPrice(l.text) && (l.flagged || score(l.text) >= 2)) { draft.splice(i, 1); priceDropped++; }
+    }
+    if (priceDropped && (draft.length < 2 || (participants.length >= 2 && new Set(draft.map((l) => l.speaker)).size < 2))) {
+      return fail(`Bỏ ${priceDropped} câu nói giá sản phẩm, không còn đủ thoại`);
+    }
     const flagged = draft.map((l, i) => (l.flagged ? i : -1)).filter((i) => i >= 0);
     if (flagged.length === 1) productIdx = flagged[0];
     else if (flagged.length > 1) {
-      productIdx = flagged.reduce((best, i) => (mentionScore(draft[i].text, pname) > mentionScore(draft[best].text, pname) ? i : best), flagged[0]);
+      productIdx = flagged.reduce((best, i) => (score(draft[i].text) > score(draft[best].text) ? i : best), flagged[0]);
     } else {
       // model quên đánh dấu nhưng câu nhắc rất rõ tên sản phẩm → đánh dấu hộ (ngưỡng chặt)
       let bestScore = 0;
       draft.forEach((l, i) => {
-        const sc = mentionScore(l.text, pname);
+        const sc = score(l.text);
         if (sc >= 3 && sc > bestScore) { bestScore = sc; productIdx = i; }
       });
     }
@@ -552,7 +631,19 @@ export function sanitizeScene(raw: unknown, req: SceneRequest, ctx: PromptContex
   }
 
   // ---- kết quả (verdict): interview hired/rejected · resign_talk stay/leave · raise_request approved/denied; cảnh khác null
-  const verdict = normalizeVerdict(req.type, root.verdict);
+  let verdict = normalizeVerdict(req.type, root.verdict);
+  // v5 crisis_meeting: model trả số thứ tự ("2", "phương án 2", "PA2") → phương án thứ n TRONG DANH SÁCH đã đưa ra
+  // (danh sách có thể bỏ qua chữ cái, vd plan_a, plan_c, plan_d — "2" nghĩa là plan_c chứ không phải plan_b)
+  if (req.type === 'crisis_meeting' && typeof root.verdict === 'string' && req.crisis?.options?.length) {
+    const n = /^(?:pa|phuongan|option|plan)?_?([1-4])$/.exec(foldKey(root.verdict))?.[1];
+    if (n) {
+      const k = Number(n);
+      const opts = req.crisis.options;
+      // số trong khoảng → phương án thứ k đã đưa; ngoài khoảng → đọc như chữ cái (4 → plan_d) nếu phương án đó có trong danh sách
+      const opt = opts[k - 1] ?? opts.find((o) => o.code === `plan_${'abcd'[k - 1]}`);
+      verdict = opt && (VERDICT_BY_TYPE.crisis_meeting?.values ?? []).includes(opt.code as Verdict) ? (opt.code as Verdict) : null;
+    }
+  }
 
   // ---- v3: quyết định nhân sự — chỉ hr_review (theo loại cảnh, như verdict)
   const hrDecisions: HrDecision[] | null = req.type === 'hr_review'
@@ -627,8 +718,10 @@ export function sanitizeBeats(raw: unknown, req: BeatRequest, ctx: PromptContext
     if (b && b === a) b = undefined;
     const iRaw = toNum(o.intensity ?? o.level);
     const intensity = iRaw === null ? 2 : Math.round(clamp(iRaw, 1, 3));
-    // AI bỏ trống note → mô tả thực đơn, điền tên vào chỗ trống "a" / "b" (người xem không thấy "a và b bỗng thân nhau…")
-    const note = idsToNames(cleanShort(o.note ?? o.desc ?? o.text, LIMITS.beatNoteChars), agents)
+    // AI bỏ trống note → mô tả thực đơn, điền tên vào chỗ trống "a" / "b" (người xem không thấy "a và b bỗng thân nhau…").
+    // Note hiện ra dòng sự kiện → có giá tiền (giá Shopee đổi liên tục, không bao giờ đọc số) thì cũng dùng mô tả thực đơn.
+    const aiNote = idsToNames(cleanShort(o.note ?? o.desc ?? o.text, LIMITS.beatNoteChars), agents);
+    const note = (aiNote && !hasPrice(aiNote) ? aiNote : '')
       || cut(fillBeatDesc(descOf.get(kind) || kind, a ? named[a]?.name : undefined, b ? named[b]?.name : undefined), LIMITS.beatNoteChars);
     const key = `${kind}|${a ?? ''}|${b ?? ''}`;
     if (seen.has(key)) continue;

@@ -1,10 +1,11 @@
 // Phòng trưng bày: sản phẩm trên kệ (hello.products -> office.setProducts), thẻ sản phẩm (emoji + nhãn),
 // bục giữa phòng, hình chữ nhật để rê chuột / bấm (toạ độ ô). Không bao giờ chặn vẽ: ảnh chỉ là tuỳ chọn.
 import { str, safeProductUrl } from '../util.js';
-import { shelfGeom, podiumGeom } from './furniture.js';
-import { fillRR, rrPath, FONT, EMOJI_FONT, fitText } from './draw.js';
+import { shelfGeom, podiumGeom, SHELF_PER_TIER, SHELF_TIERS } from './furniture.js';
+import { fillRR, rrPath, FONT, fitText, drawEmoji } from './draw.js';
 
-const MAX_PER_SHELF = 5;
+/** v4: 2 tầng × 7 ô mỗi kệ (khớp SHELF_SLOTS phía server) */
+const MAX_PER_SHELF = SHELF_PER_TIER * SHELF_TIERS;
 
 /** làm sạch danh sách sản phẩm từ server (chỉ giữ trường cần cho canvas; url phải là /go/...) */
 export function sanitizeProducts(list) {
@@ -35,7 +36,7 @@ export function sanitizeProducts(list) {
   return out;
 }
 
-/** sản phẩm hiện trên kệ nào (tối đa 5 / kệ, theo slot) */
+/** sản phẩm hiện trên kệ nào (tối đa 14 / kệ, theo slot: 7 món tầng trên rồi 7 món tầng dưới) */
 export function shelfProducts(products, shelf) {
   const list = [];
   for (const p of products) if (p.shelf === shelf) { list.push(p); if (list.length >= MAX_PER_SHELF) break; }
@@ -82,10 +83,8 @@ function card(ctx, r, p, hot) {
     ctx.drawImage(img, r.x + r.w / 2 - w / 2, r.y + r.h / 2 - h / 2, w, h);
     ctx.restore();
   } else {
-    ctx.font = `${(r.h * 0.7).toFixed(3)}px ${EMOJI_FONT}`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(p.emoji, r.x + r.w / 2, r.y + r.h * 0.56);
+    // thẻ nhỏ (0,44 ô): drawEmoji tránh lỗi Chrome bỏ qua emoji cỡ chữ < 0,4
+    drawEmoji(ctx, p.emoji, r.x + r.w / 2, r.y + r.h * 0.57, r.h * 0.72);
   }
   ctx.strokeStyle = hot ? '#ff7a45' : 'rgba(0,0,0,0.12)';
   ctx.lineWidth = hot ? 0.045 : 0.02;
@@ -93,28 +92,15 @@ function card(ctx, r, p, hot) {
   ctx.stroke();
 }
 
-/** nhãn tên ngắn dưới thẻ (chữ nhỏ, đọc được khi phóng to) */
-function label(ctx, cx, y, w, h, text) {
-  fitText(ctx, text, cx, y + h / 2 + 0.005, w - 0.06, 0.105, 700, '#374151');
-}
-
-function shortName(p) {
-  const words = p.name.split(/\s+/);
-  let s = '';
-  for (const w of words) { if ((s + ' ' + w).trim().length > 16) break; s = (s + ' ' + w).trim(); }
-  return s || p.name.slice(0, 16);
-}
-
 /**
  * Vẽ sản phẩm lên kệ f (gọi sau khi vẽ sprite kệ). Trả về danh sách rect đã vẽ (để hit-test).
  * hotId: sản phẩm đang rê chuột.
  */
-export function drawShelfProducts(ctx, f, products, hotId, out, opts = {}) {
+export function drawShelfProducts(ctx, f, products, hotId, out) {
   const shelf = shelfOfType(f.type);
   if (!shelf) return;
   const g = shelfGeom(f);
   const list = shelfProducts(products, shelf);
-  const showLabels = opts.labels !== false;
   for (let i = 0; i < list.length && i < g.slots.length; i++) {
     const p = list[i], sl = g.slots[i];
     const r = { x: sl.x, y: sl.y, w: sl.w, h: sl.h };
@@ -128,8 +114,8 @@ export function drawShelfProducts(ctx, f, products, hotId, out, opts = {}) {
       ctx.restore();
     }
     card(ctx, r, p, hot);
-    if (showLabels) label(ctx, sl.cx, sl.labelY, g.pitch - 0.04, g.labelH, shortName(p));
-    if (out) out.push({ x: r.x, y: r.y - 0.04, w: r.w, h: r.h + g.labelH + 0.26, product: p });
+    // v4: kệ dày (14 món) → không vẽ nhãn tên dưới thẻ: chuột rê để xem tên + giá; cảm ứng chạm lần 1 để xem, lần 2 để mở link
+    if (out) out.push({ x: r.x - 0.03, y: r.y - 0.04, w: r.w + 0.06, h: r.h + 0.1, product: p });
   }
 }
 
@@ -147,10 +133,7 @@ export function drawPodiumProduct(ctx, f, products, now, hotId, out) {
   const bob = Math.sin(now / 900) * 0.015;
   if (p) {
     const hot = p.id === hotId;
-    ctx.font = `${(it.h * 0.72).toFixed(3)}px ${EMOJI_FONT}`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(p.emoji, g.cx, it.y + it.h * 0.55 + bob);
+    drawEmoji(ctx, p.emoji, g.cx, it.y + it.h * 0.55 + bob, it.h * 0.72);
     // thẻ giá nhỏ
     const tag = p.priceHint || '';
     if (tag) {

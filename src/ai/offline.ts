@@ -506,7 +506,11 @@ class FX {
 }
 
 /** Cảnh có kết quả do AI/offline quyết + giá trị mặc định (giống sanitize.ts VERDICT_BY_TYPE) */
-const VERDICT_DEFAULT: Partial<Record<SceneType, Verdict>> = { interview: 'hired', resign_talk: 'stay', raise_request: 'denied' };
+const VERDICT_DEFAULT: Partial<Record<SceneType, Verdict>> = {
+  interview: 'hired', resign_talk: 'stay', raise_request: 'denied',
+  // v5: builder luôn đặt theo req.crisis.pick; đây chỉ là chốt chặn
+  crisis_meeting: 'plan_a', pep_talk: 'inspired',
+};
 
 function finalizeFx(fx: FX, sc: SC): Pick<SceneResult, 'relationshipChanges' | 'moodChanges' | 'memories' | 'kpiChanges' | 'rumor' | 'verdict' | 'hrDecisions'> {
   const allowed = new Set<SceneEffectKind>(Array.isArray(sc.req.allowedEffects) ? sc.req.allowedEffects : []);
@@ -1839,10 +1843,96 @@ const NOTICE_REPLY: Tpl[] = [
   (c) => `Suỵt, nói nhỏ thôi, ${c.me} xem có năm phút.`,
   (c) => `${c.da}${c.me} đang nghiên cứu thị trường đó${c.a}.`,
 ];
+// ---------------------------------------------------------------- v5: ghé hỏi han / nói chuyện riêng (desk_visit giọng "support")
+//  Ba kiểu: hỏi han (chưa có hướng xử lý) · nói rõ hướng đã chốt · thương lượng (chống đối: "thương lượng: … bù lại")
+const SUP: Record<string, Tpl[]> = {
+  open: [
+    (c) => `${c.Yn} ơi, ${c.me} ghé hỏi thăm chút. Dạo này ổn hông?`,
+    (c) => `Không phải chuyện việc đâu, ${c.me} hỏi thăm ${c.you} thôi.`,
+    (c) => `${c.Me} nghe loáng thoáng rồi. ${c.You} có cần gì cứ nói ${c.me} nha.`,
+  ],
+  reply: [
+    (c) => `${c.da}cũng hơi rối, mà ${c.me} đang cố${c.a}.`,
+    (c) => `${c.da}${c.me} ngại làm phiền mọi người quá${c.a}.`,
+    (c) => `${c.da}dạo này ${c.me} không tập trung nổi, ${c.me} xin lỗi${c.a}.`,
+  ],
+  plan: [
+    (c) => (planFor(c) ? `Mọi người bàn rồi nè: ${planFor(c)}. ${c.You} yên tâm.` : null),
+    (c) => (planFor(c) ? `${c.Me} nói luôn cho ${c.you} khỏi lo: ${planFor(c)}.` : null),
+  ],
+  care: [
+    (c) => `Việc thì từ từ, ${c.you} lo cho mình trước đã.`,
+    (c) => `Có gì cứ nhắn ${c.me}, đừng ôm một mình.`,
+    (c) => `Chiều ${c.me} mua ly nước cho ${c.you}, uống cho tỉnh.`,
+  ],
+  thanks: [
+    (c) => `${c.da}cảm ơn ${c.you} nhiều nha${c.a}.`,
+    (c) => `${c.da}nghe vậy ${c.me} thấy nhẹ người hơn chút${c.a}.`,
+    (c) => `${c.da}${c.me} sẽ cố, không để ảnh hưởng mọi người nữa${c.a}.`,
+  ],
+  // thương lượng (chống đối): người kia nêu điều kiện rồi chịu, hoặc vẫn càu nhàu — không an ủi kiểu "lo cho mình trước"
+  dealOpen: [
+    (c) => `${c.Yn}, ${c.me} qua nói chuyện vụ hôm trước chút, nói riêng thôi.`,
+    (c) => `Vụ ${c.you} góp ý hôm bữa, ${c.me} nói chuyện thẳng với nhau chút nha.`,
+  ],
+  dealPlan: [
+    (c) => (planFor(c) ? `${c.Me} nói thẳng nha: ${planFor(c)}. Vậy được hông?` : null),
+    (c) => (planFor(c) ? `Mọi người chốt vầy: ${planFor(c)}. ${c.You} thấy sao?` : null),
+  ],
+  dealCond: [
+    (c) => `${c.da}nhận thêm cũng được, mà ${c.me} xin nói rõ là việc gì, đừng dồn hết qua ${c.me}${c.a}.`,
+    (c) => `${c.da}vậy cũng công bằng, ${c.me} chỉ cần được nói lý lẽ thôi${c.a}.`,
+    (c) => `${c.da}nghe vẫn hơi thiệt cho ${c.me}, mà thôi, ${c.me} chịu${c.a}.`,
+  ],
+  dealClose: [
+    (c) => `Vậy chốt nha, có gì vướng thì nói ${c.me}, đừng để bụng.`,
+    (c) => `Ok, ${c.me} ghi lại, cuối tuần mình xem lại cho công bằng.`,
+    (c) => `Được vậy là đẹp, mình làm tiếp nha ${c.you}.`,
+  ],
+};
+/**
+ * Hướng xử lý đã chốt (lý do ghé bàn trong tình huống: "… đi tới bàn X để <hướng>.") — trống nếu chỉ là hỏi han.
+ * Đọc sitRaw (giữ hoa/thường): sc.sit đã viết thường nên tên người sẽ thành "linh".
+ */
+function supportPlan(sc: SC): string {
+  const m = /đi tới bàn .+? để (.+?)(?: \(|\. |\.$|\s\n)/u.exec(sc.sitRaw);
+  const why = m ? m[1].trim() : '';
+  return why && !/hỏi han/u.test(why) ? cut(why, 90) : '';
+}
+/** hướng xử lý nói với chính người đó: tên người nghe → "em / anh / chị…", bỏ nhãn "thương lượng:" */
+function planFor(c: C): string {
+  const plan = supportPlan(c.sc).replace(/^thương lượng\s*:\s*/u, '');
+  return plan ? plan.replace(wre(c.L), c.you) : '';
+}
+function dvSupport(b: B, sc: SC, fx: FX, A: P, Bp: P): string {
+  const plan = supportPlan(sc);
+  if (/^thương lượng/u.test(plan)) {
+    b.say(A, Bp, SUP.dealOpen, { em: E.polite, pe: 0.3 });
+    b.say(A, Bp, SUP.dealPlan, { pe: 0 });
+    b.say(Bp, A, SUP.dealCond, { em: E.sly, pe: 0.3 });
+    b.say(A, Bp, SUP.dealClose, { em: E.ok, pe: 0.3 });
+    fx.moodAdd(Bp, ri(0, 3));
+    fx.relAdd(Bp, A, ri(1, 3), 'thương lượng êm');
+    fx.memo(Bp, `${A.name} ghé thương lượng riêng, mình chịu nhận thêm việc để được như ý`);
+    return `${A.name} ghé bàn ${Bp.name} thương lượng riêng, hai bên chốt được.`;
+  }
+  b.say(A, Bp, SUP.open, { em: E.polite, pe: 0.4 });
+  b.say(Bp, A, SUP.reply, { em: E.sad, pe: 0.4 });
+  if (plan) b.say(A, Bp, SUP.plan, { pe: 0 });
+  b.say(A, Bp, SUP.care, { opt: true, em: E.polite, pe: 0.3 });
+  b.say(Bp, A, SUP.thanks, { em: E.happy, pe: 0.4 });
+  fx.moodAdd(Bp, ri(2, 5));
+  fx.relAdd(Bp, A, ri(2, 4), 'được hỏi han lúc khó khăn');
+  fx.memo(Bp, `${A.name} ghé hỏi han lúc mình đang rối`);
+  return `${A.name} ghé hỏi han ${Bp.name}, nói chuyện nhỏ nhẹ.`;
+}
+
 function bDeskVisit(b: B, sc: SC, fx: FX): string {
   const A = sc.cast[0];
   const Bp = sc.cast[1] ?? sc.cast[0];
   if (A.id === Bp.id) { topicBeat(b, A, A, 2); return `${A.name} ngồi một mình nghĩ về chuyện ${sc.topic}.`; }
+  // v5: giọng "support" (tình huống công ty: hỏi han người gặp chuyện / nói rõ hướng xử lý) — không rơi vào mô-típ ghé bàn thường
+  if (has(sc, 'mục tiêu: nói chuyện riêng, nhỏ nhẹ')) return dvSupport(b, sc, fx, A, Bp);
   const act = activityOf(sc, Bp);
   if (act.kind === 'slack' && chance(0.7)) {
     sc.targetAct = act.label;
@@ -3749,12 +3839,15 @@ const SR_OPEN: SrOpenTpl[] = [
   (c, shelf) => `${cap(shelf)} có đồ mới nè ${c.you}, hồi sáng ${c.me} thấy chưa có.`,
   (c) => `${c.You} đứng đây nãy giờ, định mua hay định ngắm cho đỡ buồn?`,
   (c, shelf) => `Nghỉ tay chút, ra ${shelf} coi đồ cho đỡ mỏi mắt ${c.you}.`,
-  (c) => `Ê ${c.you}, cái này ${c.me} để trong giỏ hàng hai tuần rồi đó.`,
   (c) => `Trốn việc ra đây ngắm đồ hả? ${c.Me} cũng vậy, đừng nói ai nha.`,
   (c, shelf) => `${c.You} coi ${shelf} này, bày đẹp hơn tủ nhà ${c.me}.`,
   (c, shelf) => `Món nào trên ${shelf} ${c.you} xài rồi, chỉ ${c.me} với.`,
   (c) => `Hồi nãy ${c.me} thấy ${c.you} cầm lên bỏ xuống ba lần rồi đó.`,
   (c) => (c.bossHere ? `Sếp cũng ra ngắm đồ hả, ${c.me} tưởng sếp chỉ ngắm bảng KPI.` : `${c.Me} ra đây năm phút thôi, ${c.you} canh sếp giùm.`),
+];
+/** mở đầu kiểu "chưa mua" — không dùng khi người mở lời chính là người đã có món (chế độ owner) */
+const SR_OPEN_CART: SrOpenTpl[] = [
+  (c) => `Ê ${c.you}, cái này ${c.me} để trong giỏ hàng hai tuần rồi đó.`,
 ];
 const SR_PRODUCT: SrTpl[] = [
   (c, pn, pt) => `${c.Me} xài ${pn} được một thời gian rồi, ${pt}.`,
@@ -3768,26 +3861,40 @@ const SR_PRODUCT: SrTpl[] = [
   (c, pn, pt) => `Đừng lướt qua cái ${pn} nha, ${pt}, ${c.me} nói thiệt.`,
   (c, pn, pt) => `Cái ${pn} đó hả? ${cap(pt)}, ${c.me} không nói dóc đâu.`,
 ];
+// nghi ngờ / bênh: phần chung + phần theo việc người khoe ĐÃ CÓ món (owner) hay chưa — người chưa có không được nói "xài rồi"
 const SR_DOUBT: Tpl[] = [
   (c) => `Nghe như đọc quảng cáo vậy ${c.you}, hoa hồng bao nhiêu?`,
   (c) => `${c.You} khen cái gì cũng hay, hôm bữa khen ${c.item} giờ nó nằm xó rồi.`,
   (c) => `Bao nhiêu vậy? Thôi khỏi nói, nhìn mặt ${c.you} là ${c.me} biết lương ${c.me} không đủ.`,
-  (c) => `Thiệt hông đó, hay ${c.you} được shop gửi đồ review?`,
-  (c) => `${c.Me} nghi lắm, đồ nào mới mua ai cũng khen tuần đầu.`,
   (c) => `Để tối ${c.me} lên app săn sale coi, giờ mà chốt là lỗ.`,
   (c) => `${c.You} mà đi bán hàng chắc giàu hơn làm ở đây.`,
-  (c) => `Khoan, cái này ${c.you} xài thiệt hay coi review rồi nói lại?`,
   (c) => `Nghe ham quá mà ví ${c.me} đang kêu cứu.`,
   (c) => `Lại dụ ${c.me} tiêu tiền nữa hả, tháng này ${c.me} ăn mì gói rồi đó.`,
   (c) => `Để ${c.me} lưu vô giỏ hàng, bao giờ sale thì tính.`,
 ];
+const SR_DOUBT_OWNER: Tpl[] = [
+  (c) => `Thiệt hông đó, hay ${c.you} được shop gửi đồ review?`,
+  (c) => `${c.Me} nghi lắm, đồ nào mới mua ai cũng khen tuần đầu.`,
+  (c) => `Khoan, cái này ${c.you} xài thiệt hay coi review rồi nói lại?`,
+];
+const SR_DOUBT_NEW: Tpl[] = [
+  (c) => `Chưa xài mà khen như đúng rồi, mua về rồi kể ${c.me} nghe.`,
+  (c) => `Ủa ${c.you} chưa mua mà rành dữ vậy, coi review nhiều quá rồi đó.`,
+];
 const SR_DEFEND: Tpl[] = [
+  (c) => `Tiền nào của nấy ${c.you}, mua cái rẻ xài hai tuần hư còn tốn hơn.`,
+  (c) => `${c.Me} đâu có ép, mua hay không tuỳ ${c.you}.`,
+  (c) => `Săn sale cũng được, mà ${c.me} nói trước là hết hàng thì ráng chịu nha.`,
+];
+const SR_DEFEND_OWNER: Tpl[] = [
   (c) => `Hoa hồng gì, ${c.me} xài thấy được thì nói, không tin mượn xài thử một tuần.`,
   (c) => `Xài rồi mới dám khen, chứ không ${c.me} khen chi cho mang tiếng.`,
-  (c) => `Tiền nào của nấy ${c.you}, mua cái rẻ xài hai tuần hư còn tốn hơn.`,
   (c) => `Coi review làm gì, mai ${c.me} mang cái ở nhà lên cho ${c.you} coi.`,
-  (c) => `${c.Me} đâu có ép, ${c.me} chỉ kể trải nghiệm thôi, mua hay không tuỳ ${c.you}.`,
-  (c) => `Săn sale cũng được, mà ${c.me} nói trước là hết hàng thì ráng chịu nha.`,
+];
+const SR_DEFEND_NEW: Tpl[] = [
+  (c) => `Hoa hồng gì, ${c.me} coi review cả tuần rồi mới dám rủ đó.`,
+  (c) => `${c.Me} cũng đang tính mua nè, mua chung cho vui.`,
+  (c) => `Đọc kỹ thông tin rồi mới nói, chứ ${c.me} đâu có khen bừa.`,
 ];
 const SR_SOFTEN: Tpl[] = [
   (c) => `Thôi được, cho ${c.me} xin tên shop.`,
@@ -3811,6 +3918,16 @@ const SR_CLOSE: Tpl[] = [
   (c) => `Đi đi, đứng đây lâu ${c.me} lại xách thêm món nữa đó.`,
   (c) => (c.bossHere ? null : `Nghe tiếng sếp rồi, giải tán giải tán!`),
 ];
+const SR_NEW: SrTpl[] = [
+  (c, pn, pt) => `Cái ${pn} này nè ${c.you}, ${pt}, ${c.me} đang tính rinh về.`,
+  (c, pn, pt) => `${c.You} coi cái ${pn} này, ${pt}, hợp với ${c.you} lắm đó.`,
+  (c, pn, pt) => `Đứng đây nãy giờ ${c.me} mê cái ${pn}, ${pt}.`,
+  (c, pn, pt) => `${c.Me} xem review cái ${pn} cả tuần rồi, ${pt}, mà chưa dám chốt.`,
+];
+const SR_HOOK: ((c: C, pn: string, pt: string, hk: string) => string)[] = [
+  (c, pn, pt, hk) => `Nói tới chuyện ${hk}, ${c.you} coi cái ${pn} này nè, ${pt}.`,
+  (c, pn, pt, hk) => `Vụ ${hk} á, có cái ${pn} trên kệ nè, ${pt}.`,
+];
 const SR_FILL: Tpl[] = [
   (c) => `Kệ này toàn đồ xài được, không phải đồ trang trí đâu.`,
   (c) => `Để ${c.me} coi kỹ cái này chút.`,
@@ -3820,8 +3937,8 @@ const SR_FILL: Tpl[] = [
 function srShelfName(sc: SC): string {
   const label = norm(sc.req.locationLabel || '');
   if (/làm đẹp|beauty/u.test(label)) return 'kệ làm đẹp';
-  if (/công nghệ|tech/u.test(label)) return 'kệ công nghệ';
-  return /kệ làm đẹp/u.test(sc.sit) ? 'kệ làm đẹp' : 'kệ công nghệ';
+  if (/công nghệ|tech/u.test(label)) return 'kệ đồ công nghệ';
+  return /kệ làm đẹp/u.test(sc.sit) ? 'kệ làm đẹp' : 'kệ đồ công nghệ';
 }
 function bShowroom(b: B, sc: SC, fx: FX): string {
   const pr = sc.req.product;
@@ -3831,15 +3948,24 @@ function bShowroom(b: B, sc: SC, fx: FX): string {
   const others = sc.cast.filter((p) => p.id !== rec.id);
   const Bp = others[0] ?? rec;
   const C3 = others[1];
-  const pn = pr && typeof pr.name === 'string' && pr.name.trim() ? lowerFirst(shortProductName(pr.name.trim())) : '';
-  const note = pr && typeof pr.pitch === 'string' ? pr.pitch : '';
+  const pn = pr && typeof pr.short === 'string' && pr.short.trim() ? pr.short.trim()
+    : pr && typeof pr.name === 'string' && pr.name.trim() ? lowerFirst(shortProductName(pr.name.trim())) : '';
+  const hk = pr && typeof pr.hook === 'string' && pr.hook.trim() ? lowerFirst(pr.hook.trim().replace(/[.!…]+$/u, '')) : '';
+  const owner = pr?.mode === 'owner';
+  const spoken = pr ? spokenOf(pr, pn) : '';
+  const pt = spoken || PT_FALLBACK[owner ? 'owner' : 'other'];
   const opener = others.length && chance(0.55) ? Bp : rec;
-  b.say(opener, opener.id === rec.id ? Bp : rec, SR_OPEN.map((f) => (c: C) => f(c, shelf)), { em: ['🛍️', '👀'], pe: 0.3 });
-  if (pn) b.say(rec, Bp, SR_PRODUCT.map((f) => (c: C) => f(c, pn, noteAs(c, note))), { product: true, em: ['😍', '👌', '🛍️'], pe: 0.4 });
+  const opens = owner && opener.id === rec.id ? SR_OPEN : [...SR_OPEN, ...SR_OPEN_CART];
+  b.say(opener, opener.id === rec.id ? Bp : rec, opens.map((f) => (c: C) => f(c, shelf)), { em: ['🛍️', '👀'], pe: 0.3 });
+  // v4: người đã có món (mode owner) kể lại; còn lại giới thiệu theo cớ / thông tin — không ai "đã xài lâu" nếu không có món
+  const srTpls: ((c: C) => string)[] = owner
+    ? SR_PRODUCT.map((f) => (c: C) => f(c, pn, noteAs(c, pt)))
+    : [...SR_NEW.map((f) => (c: C) => f(c, pn, pt)), ...(hk ? SR_HOOK.map((f) => (c: C) => f(c, pn, pt, hk)) : [])];
+  if (pn) b.say(rec, Bp, srTpls, { product: true, em: ['😍', '👌', '🛍️'], pe: 0.4 });
   else b.say(rec, Bp, SR_FILL, { em: E.smile, pe: 0.2 });
   if (others.length) {
-    b.say(Bp, rec, SR_DOUBT, { em: E.sly, pe: 0.4 });
-    b.say(rec, Bp, SR_DEFEND, { em: E.fun, pe: 0.3 });
+    b.say(Bp, rec, owner ? [...SR_DOUBT, ...SR_DOUBT_OWNER] : [...SR_DOUBT, ...SR_DOUBT_NEW], { em: E.sly, pe: 0.4 });
+    b.say(rec, Bp, owner ? [...SR_DEFEND, ...SR_DEFEND_OWNER] : [...SR_DEFEND, ...SR_DEFEND_NEW], { em: E.fun, pe: 0.3 });
     if (C3) {
       const grp = ++grpSeq;
       b.say(C3, null, SR_THIRD, { em: E.fun, pe: 0.3, grp, opt: true });
@@ -4552,6 +4678,244 @@ function bLayoff(b: B, sc: SC, fx: FX): string {
     `Công ty lỗ phải cắt giảm ${emp.name}, cả phòng lặng đi.`]);
 }
 
+// ---------------------------------------------------------------- v5: họp xử lý tình huống (crisis_meeting)
+/** phương án offline đã chọn sẵn (req.crisis.pick) — thoại phải khớp đúng nó */
+function crisisPick(sc: SC): { code: string; label: string } {
+  const cr = sc.req.crisis;
+  const opts = cr?.options ?? [];
+  return opts.find((o) => o.code === cr?.pick) ?? opts[0] ?? { code: 'plan_a', label: 'làm từng bước, theo dõi sát' };
+}
+const crTitle = (c: C): string => cut((c.sc.req.crisis?.title || 'chuyện công ty').toLowerCase(), 50);
+const crNote = (c: C): string => cut(c.sc.req.crisis?.note || 'tình hình đang căng', 110);
+const CM: Record<string, Tpl[]> = {
+  open: [
+    (c) => `${c.Crowd} ngồi đi, chuyện gấp: ${crNote(c)}.`,
+    (c) => `Không vòng vo nữa, ${crTitle(c)}. Mình phải quyết ngay trong buổi này.`,
+    (c) => `${c.Me} gọi mọi người vô vì chuyện ${crTitle(c)}. Ai có ý gì nói thẳng.`,
+    (c) => `Tình hình là vầy: ${crNote(c)}. Giờ tính sao?`,
+  ],
+  hr: [
+    (c) => `${c.da}${c.me} lo nhất là tinh thần anh em, quyết gì cũng phải nói rõ ràng${c.a}.`,
+    (c) => `${c.da}mấy hôm nay không khí chùng hẳn, ai cũng chạy qua hỏi ${c.me}${c.a}.`,
+    (c) => `${c.da}quyết gì thì quyết, đừng để anh em nghe tin từ nhóm chat trước${c.a}.`,
+    (c) => `${c.da}${c.me} chỉ xin một điều: đừng để ai thấy mình bị bỏ rơi${c.a}.`,
+  ],
+  sales: [
+    (c) => `${c.da}bên ${c.me} còn mấy khách có thể chốt nhanh, nhưng cần chút ưu đãi${c.a}.`,
+    (c) => `${c.da}khách giờ ai cũng thắt chặt, ${c.me} gọi mười cuộc được hai cuộc nghe máy${c.a}.`,
+    (c) => `${c.da}tiền về hay không nằm ở công nợ, ${c.me} xin đi đòi trực tiếp${c.a}.`,
+    (c) => `${c.da}khách mà nghe tin mình lục đục là họ chạy liền, phải giữ hình ảnh${c.a}.`,
+  ],
+  tech: [
+    (c) => `${c.da}dev bên ${c.me} đang chạy ${c.project}, dồn thêm là trễ hạn chắc${c.a}.`,
+    (c) => `${c.da}làm vội là có bug, ${c.me} nói trước để mọi người khỏi bất ngờ${c.a}.`,
+    (c) => `${c.da}nếu cần, team ${c.me} tăng ca được vài hôm, nhưng không kéo dài được${c.a}.`,
+    (c) => `${c.da}${c.me} cần biết thứ tự ưu tiên, chứ cái gì cũng gấp là không ai làm nổi${c.a}.`,
+  ],
+  mkt: [
+    (c) => `${c.da}trên mạng người ta đang soi mình, nói gì cũng phải cẩn thận${c.a}.`,
+    (c) => `${c.da}chuyện này xử khéo thì thành quảng cáo, xử vụng thì thành phốt${c.a}.`,
+    (c) => `${c.da}${c.me} soạn sẵn hai bản trả lời rồi, chờ chốt hướng thôi${c.a}.`,
+  ],
+  center: [
+    (c) => `${c.da}${c.me} xin nói thật: ${c.me} không cố ý làm khó ai${c.a}.`,
+    (c) => `${c.da}${c.me} chỉ mong mọi người nghe ${c.me} nói hết đã${c.a}.`,
+    (c) => `${c.da}${c.me} vẫn giữ ý của ${c.me}, nhưng ${c.me} nghe${c.a}.`,
+    (c) => `${c.da}chuyện của ${c.me} làm phiền mọi người, ${c.me} ngại lắm${c.a}.`,
+  ],
+  push: [
+    (c) => `${c.da}nhưng làm vậy anh em sẽ nghĩ sao${c.a}?`,
+    (c) => `${c.da}cách đó nhanh, mà cái giá hơi đắt${c.a}.`,
+    (c) => `${c.da}${c.me} sợ chữa cháy chỗ này lại cháy chỗ khác${c.a}.`,
+    (c) => `${c.da}${c.me} không phản đối, chỉ xin tính trước đường lui${c.a}.`,
+  ],
+  decide: [
+    (c) => `Rồi, chốt: ${crisisPick(c.sc).label}. Cách này hợp với tình hình nhất lúc này.`,
+    (c) => (c.s.role === 'boss' ? `Anh quyết vậy: ${crisisPick(c.sc).label}. Có gì anh chịu trách nhiệm.` : null),
+    (c) => `Nghe hết rồi. Phương án của mình: ${crisisPick(c.sc).label}.`,
+    (c) => (c.s.role !== 'boss' ? `${c.Me} chốt thế này rồi báo sếp sau: ${crisisPick(c.sc).label}.` : null),
+  ],
+  ok: [
+    (c) => `${c.da}${c.me} triển khai liền${c.a}.`,
+    (c) => `${c.da}vậy ${c.me} lo phần của ${c.me}${c.a}.`,
+    (c) => `${c.da}rõ rồi, ${c.me} báo anh em nhẹ nhàng thôi${c.a}.`,
+    (c) => `${c.da}ok, có gì ${c.me} cập nhật liên tục${c.a}.`,
+  ],
+};
+/** câu đệm của người chủ trì (giọng điều phối, không quyết thêm gì) */
+const CM_CHAIR_FILL: Tpl[] = [
+  (c) => `Ừ, nói tiếp đi.`,
+  (c) => `Còn ai ý kiến gì nữa không?`,
+  (c) => `Từ từ, từng người một.`,
+  (c) => `Nói ngắn gọn thôi, mình còn phải quyết.`,
+];
+/** câu đệm của người dự họp (chưa có quyết định → không "triển khai liền") */
+const CM_MEMBER_FILL: Tpl[] = [
+  (c) => `${c.da}${c.me} đồng ý là phải xử lý sớm${c.a}.`,
+  (c) => `${c.da}nghe mọi người nói ${c.me} thấy cũng có lý${c.a}.`,
+  (c) => `${c.da}${c.me} xin nói thêm một ý thôi${c.a}.`,
+];
+function bCrisisMeeting(b: B, sc: SC, fx: FX): string {
+  const cr = sc.req.crisis;
+  const chair = sc.cast[0];
+  const center = cr?.centerId ? sc.cast.find((p) => p.id === cr.centerId) ?? null : null;
+  const members = sc.cast.filter((p) => p.id !== chair.id && p.id !== center?.id);
+  const poolOf = (p: P): readonly Tpl[] => (p.role === 'hr' ? CM.hr : isSales(p) ? CM.sales : p.role === 'marketing' ? CM.mkt : TECH_ROLES.includes(p.role) ? CM.tech : CM.push);
+  sc.x = center;
+  b.say(chair, members[0] ?? center, CM.open, { em: ['🧯', '😤', '📊'], pe: 0.35 });
+  if (center) b.say(center, chair, CM.center, { em: E.nervous, pe: 0.4 });
+  for (const m of members.slice(0, 3)) b.say(m, chair, poolOf(m), { em: E.think, pe: 0.3 });
+  const objector = members.find((m) => m.role !== 'hr') ?? center ?? members[0];
+  if (objector) b.say(objector, chair, CM.push, { opt: true, em: E.think, pe: 0.3 });
+  const pk = crisisPick(sc);
+  b.say(chair, members[0] ?? center, CM.decide, { em: E.boss, pe: 0.4 });
+  b.say(members[0] ?? center, chair, CM.ok, { em: E.ok, pe: 0.4 });
+  fx.verdict = PLAN_VERDICTS.includes(pk.code as Verdict) ? (pk.code as Verdict) : 'plan_a';
+  fx.memo(chair, `Chủ trì họp xử lý ${cut((cr?.title || 'tình huống').toLowerCase(), 40)}: chốt ${cut(pk.label, 50)}`);
+  if (center) fx.memo(center, `Được gọi vào họp vì chuyện của mình, cuối cùng chốt ${cut(pk.label, 50)}`);
+  // câu chốt cụ thể đã có ở dòng sự kiện 🧯 của Director → tóm tắt thẻ cảnh không lặp lại nhãn phương án
+  return pick([
+    `${chair.name} họp kín về ${cut((cr?.title || 'tình huống công ty').toLowerCase(), 50)}, tranh luận một hồi rồi cũng chốt được hướng đi.`,
+    `Phòng họp căng như dây đàn: chuyện ${cut((cr?.title || 'công ty').toLowerCase(), 50)}, mỗi người một ý, ${chair.name} chốt hạ.`,
+    `${chair.name} gom mọi người bàn chuyện ${cut((cr?.title || 'công ty').toLowerCase(), 50)}, ai cũng có lý của mình.`,
+  ]);
+}
+const PLAN_VERDICTS: Verdict[] = ['plan_a', 'plan_b', 'plan_c', 'plan_d'];
+
+// ---------------------------------------------------------------- v5: công tác tư tưởng (pep_talk)
+const PT: Record<string, Tpl[]> = {
+  open: [
+    (c) => `${c.Crowd} ngồi xuống hết đi, hôm nay ${c.me} không nói chuyện KPI.`,
+    (c) => `${c.Me} gom mọi người lại vì ${c.me} thấy dạo này ai cũng mệt.`,
+    (c) => `Mười phút thôi, ${c.me} nói chuyện bằng cái tâm.`,
+    (c) => `Chuyện ${crTitle(c)} ${c.me} biết hết, ${c.me} không giấu ai.`,
+  ],
+  oneOpen: [
+    (c) => `${c.You} ngồi đi. ${c.Me} muốn nghe ${c.you} nói trước.`,
+    (c) => `${c.Me} gọi ${c.you} vô không phải để mắng, yên tâm.`,
+    (c) => `Dạo này ${c.me} thấy ${c.you} khác lắm. Có chuyện gì kể ${c.me} nghe.`,
+  ],
+  medOpen: [
+    (c) => `Hai người ngồi xuống. Hôm nay nói hết ra, ra khỏi phòng này thì thôi.`,
+    (c) => `${c.Me} không bênh ai. Mỗi người nói một lượt, không ngắt lời.`,
+    (c) => `Công ty có mấy người mà chia hai phe, ${c.me} nhìn mà mệt thay.`,
+  ],
+  story: [
+    (c) => (c.s.role === 'boss' ? `Hồi mới mở công ty, anh với hai thằng bạn ngồi quán cóc, laptop cắm nhờ điện quán trà đá.` : null),
+    (c) => `Công ty mình như con thuyền, sóng lớn thì càng phải chèo chung nhịp.`,
+    (c) => (c.s.role === 'boss' ? `Chúng ta là một gia đình. Gia đình thì có lúc khó, nhưng không bỏ nhau.` : null),
+    (c) => (c.s.role === 'boss' ? `Đánh golf anh học được một điều: cú quan trọng nhất là cú tiếp theo.` : null),
+    (c) => `${c.Me} không hứa hão: qua đợt này, ai gồng cùng, ${c.me} nhớ hết.`,
+    (c) => (c.s.role !== 'boss' ? `${c.Me} không nói hay được như sếp, ${c.me} chỉ nói thật lòng.` : null),
+  ],
+  moved: [
+    (c) => `${c.da}nghe ${c.you} nói vậy ${c.me} thấy có động lực lại thiệt${c.a}.`,
+    (c) => `${c.da}${c.me} hiểu rồi, ${c.me} sẽ cố thêm chút nữa${c.a}.`,
+    (c) => `${c.da}lâu lắm mới thấy ${c.you} nói chuyện kiểu này, ${c.me} cảm động thật${c.a}.`,
+    (c) => `${c.da}vậy là ${c.me} yên tâm rồi${c.a}.`,
+  ],
+  meh: [
+    (c) => `${c.da ? 'Dạ… ' : 'Ờ… '}${c.me} nghe rồi${c.a}.`,
+    (c) => `${c.da}câu "gia đình" này ${c.me} nghe lần thứ mấy rồi ta${c.a}.`,
+    (c) => `${c.da}${c.me} hiểu, mà ${c.me} vẫn mệt${c.a}.`,
+    (c) => `${c.da}nói thì dễ, làm mới khó${c.a}.`,
+  ],
+  ask: [
+    (c) => `${c.da}vậy lương thưởng tháng này có gì thay đổi không${c.a}?`,
+    (c) => `${c.da}"qua đợt này" là bao lâu vậy${c.a}?`,
+    (c) => `${c.da}${c.me} hỏi thẳng nha: công ty có tính cắt người không${c.a}?`,
+  ],
+  answer: [
+    (c) => `Câu hỏi hay. ${c.Me} trả lời thật: ${c.me} đang lo, và sẽ báo mọi người từng bước.`,
+    (c) => `Không ai phải lo mất việc vì chuyện này, ${c.me} nói rõ luôn.`,
+    (c) => `Thưởng thì chưa hứa được, nhưng cuối tuần ${c.me} khao cả nhà.`,
+  ],
+  /** 1:1 — trả lời đúng người đang ngồi trước mặt, không nói chuyện "cả công ty" */
+  answerOne: [
+    (c) => `${c.Me} hiểu. Có gì cứ nói thẳng với ${c.me}, đừng để bụng rồi nói ở nhóm chat.`,
+    (c) => `${c.You} góp ý đúng, mà mình nói đúng chỗ, đúng lúc nha.`,
+    (c) => `${c.Me} ghi nhận. Tuần này ${c.me} với ${c.you} tính lại cho hợp lý.`,
+    (c) => `${c.Me} không cần ${c.you} đồng ý ngay, chỉ cần ${c.you} biết ${c.me} đang nghe.`,
+  ],
+  /** hoà giải: một bên chìa tay / vẫn còn căng (nói với người kia) */
+  medYes: [
+    (c) => `${c.da}thôi, ${c.me} cũng có lỗi. Trưa nay đi ăn chung không${c.a}?`,
+    (c) => `${c.da}${c.me} xin lỗi vụ nhóm chat. Từ giờ có gì nói thẳng với nhau${c.a}.`,
+    (c) => `${c.da}bắt tay cái cho ${c.hrRef} yên tâm, ly trà sữa chiều nay ${c.me} bao${c.a}.`,
+  ],
+  medNo: [
+    (c) => `${c.da}${c.me} nghe rồi, mà để từ từ${c.a}.`,
+    (c) => `${c.da}${c.me} làm việc bình thường, còn thân thì chưa được${c.a}.`,
+    (c) => `${c.da}${c.me} vẫn thấy mình không sai, nhưng ${c.me} sẽ không nói nữa${c.a}.`,
+  ],
+  complain: [
+    (c) => `${c.da}${c.me} chỉ muốn ${c.xn} tôn trọng công việc của ${c.me}${c.a}.`,
+    (c) => `${c.da}${c.me} không ghét ai, chỉ là bị nói sau lưng nhiều quá${c.a}.`,
+    (c) => `${c.da}chuyện bắt đầu từ cái nhóm chat, đâu phải từ ${c.me}${c.a}.`,
+  ],
+  yesClose: [
+    (c) => `Vậy nha, mình làm tiếp. Chiều nay trà sữa ${c.me} bao.`,
+    (c) => (c.sc.cast.length > 2 ? `Cảm ơn mọi người đã nghe. ${c.Me} tin mình qua được.` : `Cảm ơn ${c.you} đã nói thật. ${c.Me} tin mình qua được.`),
+    (c) => `Rồi, vậy là rõ. Có gì cửa phòng ${c.me} luôn mở.`,
+  ],
+  noClose: [
+    (c) => `${c.da}vậy ${c.me} về chỗ làm tiếp${c.a}.`,
+    (c) => `${c.da}${c.me} về suy nghĩ thêm${c.a}.`,
+    (c) => `${c.da}${c.me} nghe rồi, mà để từ từ${c.a}.`,
+  ],
+};
+/** câu đệm của người nói (sếp / lead / HR đang truyền lửa) */
+const PT_SPEAKER_FILL: Tpl[] = [
+  (c) => `${c.Me} nói vậy thôi, ai có ý gì cứ nói.`,
+  (c) => `Cứ từ từ, ${c.me} nghe đây.`,
+  (c) => `Mình nói chuyện thẳng thắn với nhau nha.`,
+];
+/** câu đệm của người nghe */
+const PT_LISTENER_FILL: Tpl[] = [
+  (c) => `${c.da}${c.me} nghe đây${c.a}.`,
+  (c) => `${c.da}${c.me} hiểu ý ${c.you} rồi${c.a}.`,
+  (c) => `${c.da}${c.me} ghi nhận${c.a}.`,
+];
+function bPepTalk(b: B, sc: SC, fx: FX): string {
+  const cr = sc.req.crisis;
+  const sp = sc.cast[0];
+  const aud = sc.cast.filter((p) => p.id !== sp.id);
+  const yes = (cr?.pick ?? 'inspired') !== 'unmoved';
+  const variant = cr?.variant ?? 'all';
+  if (variant === 'mediate' && aud.length >= 2) {
+    const [x, y] = aud;
+    b.say(sp, x, PT.medOpen, { em: E.think, pe: 0.3 });
+    b.say(x, sp, PT.complain, { em: E.annoy, pe: 0.4, x: y });
+    b.say(y, sp, PT.complain, { em: E.annoy, pe: 0.4, x });
+    b.say(sp, null, PT.story, { em: E.polite, pe: 0.3 });
+    b.say(yes ? x : y, yes ? y : x, yes ? PT.medYes : PT.medNo, { em: yes ? E.happy : E.annoy, pe: 0.5 });
+    if (yes) { fx.relAdd(x, y, ri(3, 6), 'ngồi lại nói chuyện, làm lành'); fx.relAdd(y, x, ri(3, 6), 'ngồi lại nói chuyện, làm lành'); }
+    else { fx.relAdd(x, y, -ri(1, 3), 'hoà giải không thành'); }
+  } else {
+    const one = variant === 'one' && aud.length >= 1;
+    b.say(sp, aud[0], one ? PT.oneOpen : PT.open, { em: E.boss, pe: 0.35 });
+    b.say(sp, aud[0], PT.story, { em: E.polite, pe: 0.3 });
+    const reactors = aud.slice(0, one ? 1 : 4);
+    let asked = false;
+    for (const a of reactors) {
+      const moved = yes ? chance(0.7) : chance(0.25);
+      const ask = !moved && chance(0.5);
+      if (ask) asked = true;
+      b.say(a, sp, moved ? PT.moved : ask ? PT.ask : PT.meh, { em: moved ? E.happy : E.think, pe: 0.4 });
+      if (moved) { fx.moodAdd(a, ri(2, 4)); fx.relAdd(a, sp, ri(1, 3), 'được nói chuyện thật lòng'); } else fx.moodAdd(a, -ri(0, 2));
+    }
+    // có người hỏi thì phải có câu trả lời (không bị cắt); nói riêng 1:1 cũng giữ để câu kết không dính vào câu phản ứng
+    b.say(sp, aud[0], one ? PT.answerOne : PT.answer, { opt: !asked && !one, em: E.boss, pe: 0.3 });
+    // chưa xuôi: câu kết do người phản ứng ĐẦU (khác người vừa nói cuối) → không gộp thành "Dạ …? Dạ, em nghe rồi"
+    const closer = yes ? sp : aud[0] ?? sp;
+    b.say(closer, sp, yes ? PT.yesClose : PT.noClose, { em: yes ? E.happy : E.tired, pe: 0.5 });
+  }
+  fx.verdict = yes ? 'inspired' : 'unmoved';
+  fx.memo(sp, yes ? 'Làm công tác tư tưởng, mọi người xuôi' : 'Làm công tác tư tưởng mà mọi người chưa xuôi');
+  return variant === 'mediate' ? `${sp.name} ngồi giữa hoà giải${yes ? ', hai bên làm lành' : ', hai bên vẫn căng'}.`
+    : `${sp.name} làm công tác tư tưởng${yes ? ', mọi người xuôi dần' : ', người nghe chưa xuôi'}.`;
+}
+
 // =====================================================================
 //  11. Lắp ráp cảnh: dựng ngữ cảnh → kịch bản → sản phẩm → đủ số câu → giọng kênh
 // =====================================================================
@@ -4562,6 +4926,8 @@ const BUILDERS: Record<SceneType, (b: B, sc: SC, fx: FX) => string> = {
   pingpong_match: bPingpong, welcome: bWelcome, showroom_chat: bShowroom,
   // v3
   news_chat: bNews, hr_review: bHrReview, resign_talk: bResign, raise_request: bRaise, promotion: bPromotion, layoff: bLayoff,
+  // v5
+  crisis_meeting: bCrisisMeeting, pep_talk: bPepTalk,
 };
 const TYPE_CATS: Partial<Record<SceneType, TopicCategory[]>> = {
   promotion: ['giai_tri', 'an_uong'],
@@ -4693,24 +5059,26 @@ function buildSC(req: SceneRequest, ctx: PromptContext): SC {
 }
 
 // --- sản phẩm affiliate: đúng 1 câu product:true, ưu tiên preferSpeaker
+//  Chế độ "mention" = người nói CHƯA có món (người đã có → PRODUCT_OWNER): chỉ "đang tính / để ý / nghe kể", không "mua rồi,
+//  xài rồi" — sau cảnh, Director có thể cho người đó chốt đơn thật (vài giờ sau "hàng về"), nên lời nói phải khớp sổ đồ.
 const PRODUCT_OFFICE: ((c: C, pn: string, pt: string) => string)[] = [
-  (c, pn, pt) => `${c.Me} mới mua ${pn}, ${pt}, xài sướng lắm.`,
-  (c, pn, pt) => `Nói chứ từ hồi có ${pn}, ${pt}.`,
-  (c, pn, pt) => `${c.Yn} thử ${pn} đi, ${pt}.`,
-  (c, pn, pt) => `Hôm bữa ${c.me} săn được ${pn}, ${pt}.`,
   (c, pn, pt) => `${c.Me} đang tính sắm ${pn}, nghe nói ${pt}.`,
-  (c, pn, pt) => `Bởi vậy ${c.me} mới mua ${pn}, ${pt}.`,
-  (c, pn, pt) => `Hay ${c.you} sắm ${pn} đi, ${c.me} xài rồi, ${pt}.`,
+  (c, pn, pt) => `Nói chứ ${c.me} để ý ${pn} lâu rồi, ${pt}.`,
+  (c, pn, pt) => `${c.Yn} thử coi ${pn} đi, ${pt}.`,
+  (c, pn, pt) => `Hôm bữa ${c.me} thấy ${pn} trên mạng, ${pt}, đang nằm trong giỏ hàng.`,
+  (c, pn, pt) => `Bởi vậy ${c.me} mới tính mua ${pn}, ${pt}.`,
+  (c, pn, pt) => `Hay ${c.you} sắm ${pn} đi, ${pt}, ${c.me} cũng đang tính.`,
+  (c, pn, pt) => `Nhóm bạn ${c.me} có người dùng ${pn}, nghe kể ${pt}.`,
 ];
 const PRODUCT_PARTY: ((c: C, pn: string, pt: string) => string)[] = [
   (c, pn, pt) => `Lần sau ăn mừng phải có ${pn} nha, ${pt}.`,
   (c, pn, pt) => `Nói chứ tiệc mà có ${pn} là vui hẳn, ${pt}.`,
-  (c, pn, pt) => `${c.Me} mới mua ${pn}, ${pt}, lần sau mang lên góp vui.`,
+  (c, pn, pt) => `${c.Me} đang tính sắm ${pn}, ${pt}, lần sau mang lên góp vui.`,
 ];
 const PRODUCT_CHAT: ((c: C, pn: string, pt: string) => string)[] = [
-  (c, pn, pt) => `ê ${c.crowd} ơi, ${c.me} mới chốt đơn ${pn}, ${pt} 🛒`,
-  (c, pn, pt) => `ai cần ${pn} hông, ${pt}, ${c.me} xài thấy ok lắm`,
-  (c, pn, pt) => `${c.me} mới mua ${pn} nè, ${pt} 👍`,
+  (c, pn, pt) => `ê ${c.crowd} ơi, ${c.me} đang tính chốt đơn ${pn}, ${pt} 🛒`,
+  (c, pn, pt) => `ai cần ${pn} hông, ${pt}, ${c.me} thấy review khen nhiều`,
+  (c, pn, pt) => `${c.me} mới thấy ${pn} nè, ${pt} 👀`,
 ];
 const PRODUCT_REACT: Tpl[] = [
   (c) => `Nghe hấp dẫn ta, để ${c.me} coi thử.`,
@@ -4726,15 +5094,94 @@ const PRODUCT_REACT_CHAT: Tpl[] = [
   (c) => `lại dụ dỗ ae tiêu tiền 😂`,
   (c) => `${c.me} cũng đang tính mua nè`,
 ];
+// v4 (docs/04 §11): câu nhắc theo "kiểu chuyện" — có cớ (hook), người đã có món kể lại, khui hộp, tặng quà
+type PTpl = (c: C, pn: string, pt: string) => string;
+type HTpl = (c: C, pn: string, pt: string, hk: string) => string;
+// cớ (hk) có thể là than phiền ("ngủ trưa gục bàn dậy là ê cổ") hoặc thông báo của "vụ mua sắm" ("sếp phát động thi góc làm việc
+// đẹp nhất") → mọi câu phải đúng ngữ pháp với BẤT KỲ mệnh đề nào ("Vụ <cớ> á…", "Nói tới chuyện <cớ>…"), không "<cớ> hoài"
+const PRODUCT_HOOK: HTpl[] = [
+  (c, pn, pt, hk) => `Vụ ${hk} á, ${c.you} thử cái ${pn} đi, ${pt}.`,
+  (c, pn, pt, hk) => `Nói tới chuyện ${hk} mới nhớ, có cái ${pn}, ${pt}, ${c.me} đang tính chốt.`,
+  (c, pn, pt, hk) => `Chuyện ${hk} đó, ${c.me} đang để ý cái ${pn}, ${pt}.`,
+];
+const PRODUCT_HOOK_CHAT: HTpl[] = [
+  (c, pn, pt, hk) => `vụ ${hk} á, ${c.me} đang tính đặt cái ${pn}, ${pt} 🛒`,
+  (c, pn, pt, hk) => `nhắc vụ ${hk} mới nhớ, ai cần ${pn} hông, ${pt}`,
+];
+
+/**
+ * Pitch catalogue ("Ấm siêu tốc hai lớp công suất 1800W…") → mệnh đề nói được (≤ 40 ký tự, bỏ phần lặp lại tên gọi đời thường):
+ * tránh câu "cái ấm siêu tốc, ấm siêu tốc hai lớp công suất 1800W" đọc như quảng cáo. Không ra được thì ''.
+ */
+function spokenPitch(pitch: string, short: string): string {
+  const sw = new Set(norm(short).split(/\s+/).filter(Boolean));
+  for (const clause of String(pitch ?? '').replace(/\s+/g, ' ').trim().replace(/[.!…]+$/u, '').split(/\s*[,;:(]\s*/u)) {
+    const words = clause.split(' ').filter(Boolean);
+    let i = 0;
+    while (i < words.length && sw.has(norm(words[i]))) i++;
+    const rest = words.slice(i);
+    if (i === 0 && rest.filter((x) => sw.has(norm(x))).length >= 2) continue; // mệnh đề vẫn nhắc lại tên
+    let out = '';
+    for (const x of rest) {
+      if (`${out} ${x}`.trim().length > 40) break;
+      out = `${out} ${x}`.trim();
+    }
+    if (out.split(' ').length >= 2) return lowerFirst(out.replace(/[)\]]+$/u, ''));
+  }
+  return '';
+}
+const PRODUCT_OWNER: PTpl[] = [
+  (c, pn, pt) => `Hồi đầu ${c.me} mua cái ${pn} cho vui thôi, ai ngờ dùng ổn bất ngờ, ${pt}.`,
+  (c, pn, pt) => `${c.Me} có cái ${pn} rồi nè, tưởng thường thôi mà dùng thấy đáng, ${pt}.`,
+  (c, pn, pt) => `${c.You} hỏi đúng người rồi, cái ${pn} ${c.me} đang dùng đây, ${pt}.`,
+  (c, pn) => `Cái ${pn} ${c.me} mua về mà người nhà mượn luôn không trả, đủ hiểu rồi đó.`,
+  (c, pn, pt) => `Định mua cái ${pn} làm quà, ai dè ${c.me} dùng thử rồi giữ luôn, ${pt}.`,
+];
+const PRODUCT_OWNER_CHEAP: PTpl[] = [
+  (c, pn, pt) => `Cái ${pn} giá mềm mà dùng thấy được lắm ${c.you}, ${pt}.`,
+  (c, pn) => `Nói thiệt, cái ${pn} rẻ bất ngờ mà ${c.me} dùng không chê được chỗ nào.`,
+];
+const PRODUCT_UNBOX: PTpl[] = [
+  (c, pn, pt) => `Hàng về rồi nè, cái ${pn} ${c.me} đặt hôm bữa, ${pt}.`,
+  (c, pn, pt) => `Shipper vừa giao cái ${pn}, mở ra coi chung nè, ${pt}.`,
+  (c, pn, pt) => `Khui hộp nè ${c.you}, cái ${pn} đây, ${pt}.`,
+];
+const PRODUCT_GIFT: PTpl[] = [
+  (c, pn, pt) => `Quà cho ${c.you} nè, cái ${pn}, ${pt}, mở ra coi có thích không.`,
+  (c, pn, pt) => `Tặng ${c.you} cái ${pn} nè, ${pt}, đừng chê nha.`,
+  (c, pn) => `${c.Me} lựa mãi mới chọn được cái ${pn} cho ${c.you} đó, mở đi.`,
+];
+
+/** mệnh đề nói được: `spoken` trong data (viết tay) → rút từ pitch → '' */
+function spokenOf(pr: NonNullable<SceneRequest['product']>, pn: string): string {
+  const sp = typeof pr.spoken === 'string' ? pr.spoken.replace(/\s+/g, ' ').trim().replace(/[.!…]+$/u, '') : '';
+  return sp ? lowerFirst(cut(sp, 60)) : spokenPitch(typeof pr.pitch === 'string' ? pr.pitch : '', pn);
+}
+/** khi không rút được mệnh đề nào: chỉ người đã có món mới được nói "dùng thích" */
+const PT_FALLBACK = { owner: 'dùng thích lắm', unboxing: 'nhìn ngoài xịn hơn trong hình', other: 'review khen nhiều lắm' } as const;
+
+/** Bộ câu mẫu theo chế độ / kênh / có cớ hay không */
+function productTpls(sc: SC): ((c: C) => string)[] {
+  const pr = sc.req.product!;
+  const pn = typeof pr.short === 'string' && pr.short.trim() ? pr.short.trim() : lowerFirst(pr.name.trim());
+  const pt = spokenOf(pr, pn) || PT_FALLBACK[pr.mode === 'owner' ? 'owner' : pr.mode === 'unboxing' ? 'unboxing' : 'other'];
+  const hk = typeof pr.hook === 'string' && pr.hook.trim() ? lowerFirst(pr.hook.trim().replace(/[.!…]+$/u, '')) : '';
+  const P = (list: PTpl[]) => list.map((f) => (c: C) => f(c, pn, pt));
+  const H = (list: HTpl[]) => list.map((f) => (c: C) => f(c, pn, pt, hk));
+  if (pr.mode === 'unboxing') return P(PRODUCT_UNBOX);
+  if (pr.mode === 'gift') return P(PRODUCT_GIFT);
+  if (pr.mode === 'owner') return P(pr.priceFeel === 're' || pr.priceFeel === 'vua' ? [...PRODUCT_OWNER, ...PRODUCT_OWNER_CHEAP] : PRODUCT_OWNER);
+  if (sc.channel === 'group') return hk ? [...H(PRODUCT_HOOK_CHAT), ...P(PRODUCT_CHAT)] : P(PRODUCT_CHAT);
+  if (sc.type === 'celebration') return P([...PRODUCT_PARTY, ...PRODUCT_OFFICE.slice(0, 2)]);
+  return hk ? [...H(PRODUCT_HOOK), ...H(PRODUCT_HOOK), ...P(PRODUCT_OFFICE)] : P(PRODUCT_OFFICE);
+}
+
 /** Builder tự chèn câu sản phẩm ngay tại nhịp hợp lý (insertProduct sẽ bỏ qua nếu đã có) */
 function sayProduct(b: B, sc: SC, speaker?: P, listener?: P): boolean {
   const pr = sc.req.product;
   if (!pr || typeof pr.name !== 'string' || !pr.name.trim() || sc.lines.some((l) => l.product)) return false;
   const sp = (pr.preferSpeaker && sc.cast.find((p) => p.id === pr.preferSpeaker)) || speaker || sc.cast[0];
-  const pn = lowerFirst(pr.name.trim());
-  const pt = typeof pr.pitch === 'string' && pr.pitch.trim() ? lowerFirst(pr.pitch.trim().replace(/[.!…]+$/u, '')) : 'xài thích lắm';
-  const base = sc.channel === 'group' ? PRODUCT_CHAT : sc.type === 'celebration' ? [...PRODUCT_PARTY, ...PRODUCT_OFFICE.slice(0, 2)] : PRODUCT_OFFICE;
-  const d = b.make(sp, listener && listener.id !== sp.id ? listener : b.partnerOf(sp), base.map((f) => (c: C) => f(c, pn, pt)), { em: ['😍', '👍', '🛒'], pe: 0.4 });
+  const d = b.make(sp, listener && listener.id !== sp.id ? listener : b.partnerOf(sp), productTpls(sc), { em: ['😍', '👍', '🛒'], pe: 0.4 });
   if (!d) return false;
   d.product = true;
   sc.lines.push(d);
@@ -4743,8 +5190,6 @@ function sayProduct(b: B, sc: SC, speaker?: P, listener?: P): boolean {
 function insertProduct(b: B, sc: SC): void {
   const pr = sc.req.product;
   if (!pr || typeof pr.name !== 'string' || !pr.name.trim() || sc.lines.some((l) => l.product)) return;
-  const pn = lowerFirst(pr.name.trim());
-  const pt = typeof pr.pitch === 'string' && pr.pitch.trim() ? lowerFirst(pr.pitch.trim().replace(/[.!…]+$/u, '')) : 'xài thích lắm';
   const speaker = (pr.preferSpeaker && sc.cast.find((p) => p.id === pr.preferSpeaker))
     || sc.cast.find((p) => p.role === 'marketing') || sc.cast.find((p) => p.role !== 'boss') || sc.cast[0];
   const L = sc.lines;
@@ -4766,9 +5211,7 @@ function insertProduct(b: B, sc: SC): void {
   const pos = best.length ? pick(best) : n;
   const prevSp = L[pos - 1]?.sp;
   const listener = prevSp && prevSp.id !== speaker.id ? prevSp : sc.cast.find((p) => p.id !== speaker.id) ?? speaker;
-  const base = sc.channel === 'group' ? PRODUCT_CHAT : sc.type === 'celebration' ? [...PRODUCT_PARTY, ...PRODUCT_OFFICE.slice(0, 2)] : PRODUCT_OFFICE;
-  const tpls = base.map((f) => (c: C) => f(c, pn, pt));
-  const d = b.make(speaker, listener, tpls, { em: ['😍', '👍', '🛒'], pe: 0.4 });
+  const d = b.make(speaker, listener, productTpls(sc), { em: ['😍', '👍', '🛒'], pe: 0.4 });
   if (!d) return;
   d.product = true;
   L.splice(pos, 0, d);
@@ -4819,6 +5262,10 @@ function fillerPool(sc: SC, sp: P): Tpl[] {
   switch (sc.type) {
     case 'hr_warning': case 'firing': case 'interview': case 'boss_call': case 'boss_catch':
     case 'hr_review': case 'resign_talk': case 'raise_request': case 'layoff': return FORMAL_FILL;
+    // v5: họp xử lý / truyền lửa — câu đệm cũng phải nghiêm túc, không tám chuyện ngoài lề
+    // không dùng CM.ok ("em triển khai liền") làm câu đệm: có thể bị chèn TRƯỚC câu chốt
+    case 'crisis_meeting': return sp.id === sc.cast[0]?.id ? CM_CHAIR_FILL : [...CM.push, ...CM_MEMBER_FILL];
+    case 'pep_talk': return sp.id === sc.cast[0]?.id ? PT_SPEAKER_FILL : PT_LISTENER_FILL;
     case 'news_chat': return [...NEWS_REACT, ...(sc.nCat ? NEWS_REACT_CAT[sc.nCat] : []), ...ACKS.slice(0, 4)];
     case 'promotion': return sp.role === 'boss' ? PM.bossClose : [...PM.joy, ...ACKS.slice(0, 3)];
     case 'incident': return INC_FILL;
@@ -5038,13 +5485,15 @@ function generate(req: SceneRequest, ctx: PromptContext): SceneResult {
   safe(() => fitLines(b, sc));
   safe(() => mergeAdjacent(b, sc));
   safe(() => applyTics(b, sc));
-  const pn = sc.req.product?.name?.trim() ?? '';
+  const prd = sc.req.product;
+  // tên mà câu sản phẩm thật sự dùng (productTpls / bShowroom): short, không có thì tên catalogue viết thường
+  const pn = typeof prd?.short === 'string' && prd.short.trim() ? prd.short.trim()
+    : typeof prd?.name === 'string' && prd.name.trim() ? lowerFirst(prd.name.trim()) : '';
   const lines: SceneLine[] = sc.lines.map((d) => {
     let text = d.text;
     if (sc.channel === 'group') {
-      // giữ nguyên tên sản phẩm khi chuyển sang văn chat
-      const lowName = pn ? lowerFirst(pn) : '';
-      const guard = lowName && text.includes(lowName) ? lowName : '';
+      // giữ nguyên tên sản phẩm khi chuyển sang văn chat ("không dây" không thành "ko dây")
+      const guard = pn && text.includes(pn) ? pn : '';
       text = guard ? chatify(text.replace(guard, '\u0000'), d.sp).replace('\u0000', guard) : chatify(text, d.sp);
     }
     const line: SceneLine = { speaker: d.sp.id, text: cut(text, 200) };

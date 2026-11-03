@@ -1,6 +1,6 @@
 # Mô phỏng thế giới (World) — lõi "thân xác" 0 token
 
-> Cập nhật lần cuối: 2026-11-02 · Phạm vi: `src/sim/world.ts`, `src/sim/behavior.ts`, `src/sim/map.ts`, `src/sim/clock.ts`, `src/sim/persist.ts`, `src/sim/showroom.ts`, `src/sim/archive.ts` và phần liên quan của `src/types.ts` · Đọc khi: cần hiểu/sửa đồng hồ game, di chuyển, lịch trong ngày, hoạt động & nhãn, KPI, tính cách, sếp, sự cố, dự án/doanh thu, lưu/khôi phục `data/state.json`, lưu trữ JSONL dài hạn, gói tin gửi client, hoặc khi Director/HR/AI cần gọi vào World.
+> Cập nhật lần cuối: 2026-11-03 · Phạm vi: `src/sim/world.ts`, `src/sim/behavior.ts`, `src/sim/map.ts`, `src/sim/clock.ts`, `src/sim/persist.ts`, `src/sim/showroom.ts`, `src/sim/archive.ts` và phần liên quan của `src/types.ts` · Đọc khi: cần hiểu/sửa đồng hồ game, di chuyển, lịch trong ngày, hoạt động & nhãn, KPI, tính cách, sếp, sự cố, dự án/doanh thu, lưu/khôi phục `data/state.json`, lưu trữ JSONL dài hạn, gói tin gửi client, hoặc khi Director/HR/AI cần gọi vào World.
 
 Tài liệu này trả lời: "World làm gì mỗi tick, giữ trạng thái gì, ra quyết định theo công thức nào, và thứ gì sống/chết qua một lần khởi động lại?". World là lớp **không tốn token**: mọi thứ ở đây là số học + bảng trọng số; lớp "kịch bản" (Director, HR, AI biên kịch) nằm ở [04-dao-dien-cau-chuyen-nhan-su.md](04-dao-dien-cau-chuyen-nhan-su.md) và chỉ nói chuyện với World qua `WorldApi`/`DirectorApi`. Giao thức WebSocket và cách server bọc World xem [02-kien-truc-va-giao-thuc.md](02-kien-truc-va-giao-thuc.md); biến môi trường đầy đủ xem [09-cau-hinh-du-lieu.md](09-cau-hinh-du-lieu.md); test xem [11-kiem-thu-qa.md](11-kiem-thu-qa.md). Hợp đồng gốc vẫn là `SPEC.md` §3 (time model), §4 (body layer), §10.3 (archive), §10.4 (World v3) và `src/types.ts`; `docs/v2-contract.md` §1/§3 (bản đồ v2, hoạt động/frame), `docs/v3-news.md` ("Câu chuyện tự phát triển", "Lưu trữ dài hạn") là thiết kế gốc — tài liệu này mô tả **code hiện tại**, chỗ nào SPEC lệch code sẽ ghi rõ.
 
@@ -379,7 +379,7 @@ Bỏ qua nếu `dt ≤ 0`, không có mặt, hoặc `pendingDur !== null` (chưa
    - `moodBase(a)` = `75 + 12·(humor − 0.5) − 8·(temper − 0.5)` (≈ 67–83) (`:1730-1732`).
    - `stressBase(a)` = `18 + 10·temper` + 15 (vai dự án & deadline ≤ 1) + 10 (`lowStreak > 0` hoặc `warnings > 0`) + 6 (không phải sếp & `kpiBehind`) + 12 (`server_down` & vai dự án) (`:1735-1742`).
 3. `rt.rate` (hiệu ứng "khi xong" rải đều) khi còn trong thời lượng. `ON_COMPLETE` (`behavior.ts:93-98`): coffee energy +22, water +3, snack mood +4 energy +5, toilet stress −6; `onCompleteRate(activity, durMin)` chia cho `max(1, dur)` → bị ngắt giữa chừng chỉ nhận một phần.
-4. KPI: `f = kpiFactor(activity, role)` (`behavior.ts:112-120`: working 1; window 0.8 chỉ sales; boss_office 1 chỉ sếp; server_fix 0.5 chỉ dev; còn lại 0). `mult = f × (panic ? 0.5) × (onPhone ? 0.6)`. `k = kpiRate(a, wifiDown) · mult · dt` → `kpiToday += k`; `working` & vai dự án → `progressPending += 0.016·k`.
+4. KPI: `f = kpiFactor(activity, role)` (`behavior.ts:112-122`: working 1; window 0.8 chỉ sales; **showroom 0.8 chỉ marketing** (2026-11-03 — giới thiệu sản phẩm ở phòng trưng bày là việc của marketing, như sales gọi khách bên cửa sổ; người khác ra đó là đi ngắm đồ); boss_office 1 chỉ sếp; server_fix 0.5 chỉ dev; còn lại 0). `mult = f × (panic ? 0.5) × (onPhone ? 0.6)`. `k = kpiRate(a, wifiDown) · mult · dt` → `kpiToday += k`; `working` & vai dự án → `progressPending += 0.016·k`.
 5. Sales đang `working`/`window` và không panic: xác suất chốt deal mỗi phút `rate = 0.004·(0.5 + diligence)`, Poisson `Math.random() < 1 − exp(−rate·dt)` → `closeDeal(a)`.
 
 ### 8.2 Công thức KPI (`behavior.ts:122-143`)
@@ -608,7 +608,7 @@ Vừa được thả khỏi cảnh (`'scene'`/`'meeting'`) → `'idle'`; chờ q
 
 ### 12.3 Hiệu ứng từ Director (`world.ts:822-864`)
 
-`adjust(id, { energy, mood, stress, kpi })` kẹp 0..100, kpi ≥ 0 · `changeRelationship(from, to, delta, note)` **một chiều**, score −100..100 làm tròn, note ≤ 120 · `addMemory(id, text)` ≤ 120 ký tự, bỏ nếu trùng ký ức cuối, giữ 8 · `setIncident(kind)` · `addRevenue(millionVnd)`.
+`adjust(id, { energy, mood, stress, kpi })` kẹp 0..100, kpi ≥ 0 · `changeRelationship(from, to, delta, note)` **một chiều**, score −100..100 làm tròn, note ≤ 120 · `addMemory(id, text)` ≤ 120 ký tự, bỏ nếu trùng ký ức cuối, giữ 8 · `setIncident(kind)` · `addRevenue(millionVnd)` · v4 `setDeskItem(id, productId)` (`world.ts:842-850`, §15.4).
 
 ### 12.4 API v3 ngoài `WorldApi` — duck-typing
 
@@ -665,7 +665,7 @@ choose → startAction('toilet') → reserveIn(['toilet']) → begin(target = (2
 - `output(nowMs)` (`:2763-2777`): `frame` khi `forceFrame` hoặc ≥ `FRAME_MS = 200` ms: `{ t:'frame', clock, a: frameAgents(), ts: Date.now() }` — `ts` là dấu giờ server để client nội suy theo trục giờ server (chống giật qua Cloudflare; client vẽ trễ bộ đệm thích ứng `store.net.buffer`, `NET_BUFFER_MIN/MAX/START = 260/700/340` ms, `public/js/store.js:146`). `agents` + `status`: mỗi `AGENTS_MS = 2000` ms (due) **hoặc** khi dirty và đã ≥ 300 ms; `status` luôn kèm, `agents` chỉ khi due hoặc `agentsDirty`.
 - `frameAgents()` (`:2779-2787`): chỉ người `present` (kể cả ẩn, `:2782`): `[id, x (2 chữ số), y, dir, activity, emote, flags]`, flags bit 1 đang đi, 2 `onPhone`, 4 trong cảnh, 8 ẩn (`FrameAgent`, `types.ts:438-439`).
 - `publicAgents()` (`:2789-2791`) gửi **mọi** agent trong `map` — kể cả `offsite` (chưa tới/đã về), ứng viên `candidate`, người `fired` đang ôm thùng ra cửa — khác với `frame` chỉ có người `present`. Client/Director đọc gói `agents` (và `hello.agents`) phải tự lọc theo `present`/`status`; một id có trong `agents` nhưng không có trong `frame` là bình thường (người đó không ở văn phòng).
-- `toPublicAgent` (`:2821-2835`) → `PublicAgent` (`types.ts:419-436`) gồm cả relationships/memories/traitBase/probation/bonuses/promotions; `deskItem` qua `getProduct(deskItemProductId)` → `toPublic(p, 'desk')`, cache theo id (`deskItemCache`).
+- `toPublicAgent` (`:2821-2835`) → `PublicAgent` (`types.ts:440-457`) gồm cả relationships/memories/traitBase/probation/bonuses/promotions; `deskItem` qua `getProduct(deskItemProductId)` → `toPublic(p, 'desk')`, cache theo id (`deskItemCache`). Món đồ trên bàn đổi được lúc đang chạy (v4, §15.4).
 - `statusInfo()` (`:2837-2852`): `{ bossAway, bossNote, viewers, ai: brain.usage() (lỗi → bản offline rỗng dùng config.model/dailyBudgetUsd), company, clicks, speed }`. **World phát `StatusInfo` đầy đủ**; `src/server.ts:184-210` thay bằng `publicStatus()` (clicks 0, `ai` rỗng trừ `mode`) cho socket không có quyền dev và ghi đè `hello.dev`/`hello.status` theo từng socket (`server.ts:455-462`). Nguyên tắc "người xem không thấy hệ thống" nằm ở **server**, không ở World — đường phát mới nào tái dùng `hello()`/`statusInfo()` phải lọc lại.
 
 ### 15.2 Vào từ client
@@ -677,6 +677,15 @@ choose → startAction('toilet') → reserveIn(['toilet']) → begin(target = (2
 ### 15.3 Sản phẩm lên kệ (`src/sim/showroom.ts`)
 
 `buildShowroomProducts()` (`showroom.ts:87-118`): ưu tiên `products.getShowroomProducts()` (có thật ở `src/content/products.ts:225`, truy cập qua namespace để biên dịch được dù content chưa có); rỗng/lỗi → `getProducts()`. Mỗi mục qua `toShowroom()`: `id` khớp `ID_RE = /^[A-Za-z0-9_-]{1,80}$/`, có `name` (≤ 120), `category` từ `category`/`shelf`/tag (`BEAUTY_TAGS` = lam-dep, my-pham, skincare, son; `TECH_TAGS` = cong-nghe, gadget) — không thuộc kệ nào thì không lên kệ; `url` **luôn** `/go/<id>?src=showroom`; `emoji` mặc định 🛒; `note` thiếu → `pitch` (≤ 200); `image` chỉ nhận http(s) hoặc đường dẫn tuyệt đối. `assignSlots()`: slot thiếu (−1) → số trống nhỏ nhất của kệ; sắp kệ làm đẹp trước → slot → tên (`localeCompare 'vi'`). Trần `MAX_ITEMS = 40`, loại trùng id, không bao giờ throw. World cache 1 lần/tiến trình (`showroomCache`, `world.ts:2809-2819`) → **đổi `data/products.json` phải khởi động lại**.
+
+### 15.4 Món đồ trên bàn (v4)
+
+Mỗi nhân viên có một `deskItemProductId` = id món trong `data/products.json`: vẽ emoji trên bàn (canvas) và hiện trong hồ sơ kèm link `/go/<id>?src=desk`.
+
+- **Preset 10 nhân vật gốc** (`src/content/roster.ts`): sếp `am-dun-nuoc-bluestone`, HR `nen-thom-heny-garden`, techlead `ssd-di-dong-ssk`, senior `man-hinh-aoc`, junior `chan-goi-van-phong-cecila`, QA `lot-chuot-hinh-meo`, designer `hop-trang-suc-eleanor`, saleslead `may-chieu-mini`, sale mới `chuot-attack-shark-x11`, marketing `bang-phan-mat-cheeryep`.
+- **`DESK_ITEM_TAGS: Record<RoleKey, string[]>`** (`roster.ts:74-85`): tag gợi ý theo vai (vd junior `chuot, gaming, ngu-trua, ban-lam-viec`; marketing `trang-diem, livestream, thoi-trang, lam-dep`), khớp `tags` của danh mục. Dùng ở hai chỗ: ứng viên / người mới do AI sinh (`DESK_TAGS` trong `src/ai/brain.ts` chính là bảng này) và `fixDeskItems` bên dưới. Bảng là `Record` đầy đủ — thêm vai mới thì TypeScript báo thiếu.
+- **`setDeskItem(id, productId)`** (`world.ts:842-850`, thuộc `WorldApi`): đặt món đồ trên bàn; bỏ qua nếu không có người / id không có trong danh mục / trùng món đang có; đánh dấu `agentsDirty`. Director gọi khi **hàng về** (shipper giao), khi **được tặng quà bí mật** và khi AI biên kịch cho ai đó "săn được" một món (`StoryAction 'own'`) — chi tiết [04-dao-dien-cau-chuyen-nhan-su.md](04-dao-dien-cau-chuyen-nhan-su.md) §11.5–11.6.
+- **`fixDeskItems()`** (`world.ts:856-890`, private): chạy cuối `freshInit` và ngay sau `restoreWorld` trong `load()` (`:1109`). Ai (chưa nghỉ) có món không còn trong danh mục → đổi sang preset của roster nếu còn và chưa ai giữ, không thì `pickProduct(DESK_ITEM_TAGS[vai], các món đã có người giữ)`; xoá `deskItemCache`, log `[world] Đổi "món đồ trên bàn" cho N nhân viên theo danh mục sản phẩm mới.` Nhờ vậy đổi bộ sản phẩm (v4: 18 món mẫu → 26 món chính thức) **không cần xoá `data/state.json`**.
 
 ---
 
@@ -694,7 +703,7 @@ choose → startAction('toilet') → reserveIn(['toilet']) → begin(target = (2
 ### 16.2 `save()` / `load()` (`world.ts:1006-1077`)
 
 - `save()`: bỏ qua nếu `!config.persist`; `{ version: 1, savedAt, world: serializeWorld(), director: jsonSafe(director.serialize), brain: jsonSafe(brain.serialize) }` → `writeJsonAtomic(config.stateFile)`. `jsonSafe` (`:2926-2934`) ép qua `JSON.parse(JSON.stringify())`, lỗi → null (một module hỏng không làm hỏng cả file).
-- `load()` thứ tự: đọc file (lỗi → `loadFailed(…, quarantine)`); không có file → văn phòng mới (không cách ly); sai `version` → cách ly; **`brain.restore` trước** (giữ chi phí đã tiêu kể cả khi world hỏng); `restoreWorld(data.world)` (false/throw → cách ly + `freshInit()`); rồi `director.restore`. Thành công → `dayStartNotified = true`.
+- `load()` thứ tự: đọc file (lỗi → `loadFailed(…, quarantine)`); không có file → văn phòng mới (không cách ly); sai `version` → cách ly; **`brain.restore` trước** (giữ chi phí đã tiêu kể cả khi world hỏng); `restoreWorld(data.world)` (false/throw → cách ly + `freshInit()`); v4 `fixDeskItems()` (món đồ trên bàn không còn trong danh mục → đổi, §15.4); rồi `director.restore`. Thành công → `dayStartNotified = true`.
 - `loadFailed(why, quarantine)`: `quarantineFile` → `*.bad-<stamp>`, `console.warn`, `freshInit()`. README §10 hướng dẫn "làm lại văn phòng": tắt server, xoá `data/state.json`.
 
 ### 16.3 Shape `serializeWorld()` (`world.ts:3013-3038`)
@@ -868,6 +877,7 @@ HTTP `GET /api/history` (`server.ts:289-290, 435`) đọc qua singleton này —
 | `hello()`, `output()`, `statusInfo()` | §15; **nhớ `publicStatus()`/`hello.dev` ở server** — đường phát mới phải lọc hệ thống cho người xem thường; [02](02-kien-truc-va-giao-thuc.md), [08](08-frontend-giao-dien.md) | `npm run smoke`; mở trang không có mã dev kiểm bằng mắt |
 | `recordClick`/`clickStats` | §15.2; README §5.3; `/api/stats` ở server | `npm run smoke` ("đếm click theo sản phẩm × nguồn") |
 | `showroom.ts` (kệ, url, slot) | §15.3; `docs/v2-contract.md` §2; README §5.1 | `npm run smoke` ("hello.products…") |
+| `setDeskItem`, `fixDeskItems`, preset `deskItemProductId` / `DESK_ITEM_TAGS` trong roster | §15.4; [04-dao-dien-cau-chuyen-nhan-su.md](04-dao-dien-cau-chuyen-nhan-su.md) §11.5; [09-cau-hinh-du-lieu.md](09-cau-hinh-du-lieu.md) §5.4 (danh sách preset) | `npm run smoke` |
 | `archive.ts` (format dòng, xoay vòng, đọc, `isFrozenDay`) | §17; `SPEC.md` §10.3; README §8; `/api/history` ở server (`Cache-Control` theo `isFrozenDay`, `server.ts:320`) | `npm run smoke` (v3 archive checks) |
 | `DEV_EVENTS`/`DevEventName` | §18; `src/types.ts`; bảng dev client; README §9 | `npm run smoke` với `SMOKE_DEV=1` |
 | Biến môi trường mới cho World | §20; `.env.example`; `src/config.ts`; [09-cau-hinh-du-lieu.md](09-cau-hinh-du-lieu.md) | `npm run typecheck` |
@@ -886,7 +896,7 @@ HTTP `GET /api/history` (`server.ts:289-290, 435`) đọc qua singleton này —
 8. **`endDay` xoá ứng viên đang chờ** (`:2400`) — nếu Director lên lịch phỏng vấn sát 18:00 (night skip) ứng viên biến mất không có cảnh. Cần kiểm tra Director có tránh giờ này.
 9. **`restoreWorld` từ chối file không có sếp active** (`:3086`) → làm mới toàn bộ và cách ly file. Nếu tương lai cho phép "công ty không sếp" phải nới điều kiện.
 10. **`recordClick` `console.log` mỗi lượt** (`:1002`) — traffic lớn sẽ ồn log pm2; cân nhắc gom.
-11. **`deskItemCache`/`showroomCache`** chỉ tính 1 lần/tiến trình → đổi `data/products.json` phải restart; 4 sản phẩm thật còn trống trong `docs/real-products.json` là việc mở của chủ dự án.
+11. **`deskItemCache`/`showroomCache`** chỉ tính 1 lần/tiến trình → đổi `data/products.json` phải restart. (2026-11-03: danh mục đã thay bằng 26 món chính thức; `docs/real-products.json` chỉ còn giá trị lịch sử.)
 12. **`walkTo` dịch chuyển tức thời khi không có đường** (`:1219-1223`) — smoke chỉ kiểm "mọi chỗ tới được từ cửa", không kiểm mọi cặp (chỗ ↔ ghế); nếu bản đồ sửa sai, nhân vật "nhảy" mà không có cảnh báo. Cân nhắc `console.warn` có giới hạn tần suất ở nhánh này.
 13. **`maybeInvite` cần `a→b ≥ 20`** — vài ngày đầu gần như không ai rủ ai ngoài các cặp `INITIAL_RELATIONSHIPS`; có vẻ là ý đồ, cần xác nhận với chủ dự án.
 14. **`trackSpeedLoss` chỉ bù khi speed > 3** — nếu đổi `WALK_TILES_PER_SEC` hoặc `min(speed, 4)` phải xem lại ngưỡng `s <= 3` (`:1181`) và `min(s, 3)` của cảnh.

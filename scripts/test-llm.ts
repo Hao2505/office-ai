@@ -22,7 +22,10 @@ import { World } from '../src/sim/world.js';
 import { COMPANY_INFO } from '../src/content/catalog.js';
 import { buildBeatsSystemPrompt, buildBeatsUserPrompt, buildSceneUserPrompt, buildSystemPrompt } from '../src/ai/prompts.js';
 import { estimateTokens } from '../src/ai/prompt-budget.js';
-import { isNewsSafe } from '../src/ai/sanitize.js';
+import { hasPrice, isNewsSafe } from '../src/ai/sanitize.js';
+import { offlineScene } from '../src/ai/offline.js';
+import { getProducts, shortNameOf } from '../src/content/products.js';
+import { SHOPPING_THEMES } from '../src/content/shopping.js';
 // Director được nạp động ở mục cuối: file của drama engineer đang sửa thì các mục AI vẫn chạy, mục đó báo lỗi rõ ràng.
 
 // ---------------------------------------------------------------- tiện ích test
@@ -103,7 +106,8 @@ const smart: Handler = (r, res) => {
   const n = Math.max(2, Math.min(min || 4, 6));
   const lines = Array.from({ length: n }, (_, i) => ({
     speaker: ids[i % Math.max(1, ids.length)] ?? 'khoa', text: `Câu thoại giả lập số ${i + 1} nè`, emote: i === 0 ? '😄' : null,
-    product: user.includes('SẢN PHẨM') && i === 1,
+    // v4: prompt không còn chữ "SẢN PHẨM"; cảnh có sản phẩm thì YÊU CẦU ghi "đúng 1 câu product=true"
+    product: user.includes('đúng 1 câu product=true') && i === 1,
   }));
   // v3: hr_review → quyết định "none" cho từng người trong HỒ SƠ; verdict theo loại cảnh
   const dossierIds = [...user.matchAll(/^- \[([a-z0-9_]+)\]/gmu)].map((m) => m[1]);
@@ -455,9 +459,10 @@ section('10. v3 — news_chat: luật tin thật trong prompt + lưới an toàn
   check('prompt gợi ý liên hệ sở thích của người trong cảnh (Phát, Tú)', /Có thể liên hệ sang chuyện của mình: .*Phát \(.*\).*Tú \(.*\)/.test(user), user.split('\n').find((l) => l.startsWith('Có thể liên hệ')) ?? '');
   check('định hướng news_chat + thẻ "thích:" trong hồ sơ nhân vật', /Loại: news_chat/.test(user) && /thích: /.test(user));
   check('system prompt có luật tin thật gọn + hrDecisions trong mẫu JSON', /TIN THẬT/.test(sys) && /"hrDecisions":null/.test(sys));
-  check('schema verdict đủ 6 giá trị + hrDecisions enum HrAction', (() => {
+  check('schema verdict đủ giá trị (v3 + v5 plan_a..plan_d, inspired, unmoved) + hrDecisions enum HrAction', (() => {
     const s = JSON.stringify(requests[req0].body.response_format);
-    return s.includes('"stay"') && s.includes('"approved"') && s.includes('"second_chance"') && s.includes('hrDecisions');
+    return s.includes('"stay"') && s.includes('"approved"') && s.includes('"second_chance"') && s.includes('hrDecisions')
+      && ['plan_a', 'plan_b', 'plan_c', 'plan_d', 'inspired', 'unmoved'].every((v) => s.includes(`"${v}"`));
   })());
   check('lưới an toàn: bỏ 2 câu "bị bắt"/"ngoại tình", giữ 3 câu an toàn (kể cả "bị bắt lười")', r.source === 'llm' && r.lines.length === 3
     && r.lines.every((l) => !/bị bắt vì|ngoại tình/.test(l.text)) && r.lines.some((l) => l.text.includes('bị bắt lười')), r.lines.map((l) => l.text).join(' | '));
@@ -664,6 +669,207 @@ section('12. v3 — verdict: resign_talk stay/leave, raise_request approved/deni
   check('offline layoff: sếp mở lời, Tú phản ứng, đồng nghiệp buồn; verdict null', offLayoff.lines.length >= 4 && offLayoff.verdict === null && offLayoff.lines[0].speaker === 'hung' && offLayoff.lines.some((l) => l.speaker === 'tu') && offLayoff.moodChanges.some((m) => m.id === 'tu' && m.delta < 0), offLayoff.lines.map((l) => `${l.speaker}: ${l.text}`).join(' | '));
 }
 
+// ---------------------------------------------------------------- 12b. v5 — tình huống công ty
+section('12b. v5 — crisis_meeting chốt mã phương án, pep_talk inspired/unmoved, offline khớp lựa chọn dự phòng');
+{
+  const options = [
+    { code: 'plan_a', label: 'thắt lưng buộc bụng: tạm dừng trà sữa thứ Sáu' },
+    { code: 'plan_b', label: 'dồn sức đòi công nợ, sales chạy hết công suất' },
+    { code: 'plan_c', label: 'nói thẳng với anh em: lương trễ vài ngày' },
+  ];
+  const meet = sceneReq({
+    type: 'crisis_meeting', participants: ['hung', 'ngoc', 'phat'], locationLabel: 'Phòng họp', minLines: 5, maxLines: 9,
+    situation: 'Sếp Hùng triệu tập họp kín vì chuyện kẹt tiền xoay vòng vốn.', allowedEffects: ['verdict', 'mood', 'relationship', 'memory'],
+    crisis: { kind: 'cash_crunch', title: 'Kẹt tiền xoay vòng vốn', note: 'Khách lớn chậm thanh toán', options, pick: 'plan_c' },
+  });
+  const pep = sceneReq({
+    type: 'pep_talk', participants: ['hung', 'tu', 'vy'], locationLabel: 'Phòng họp', minLines: 4, maxLines: 8,
+    situation: 'Sếp Hùng gom mọi người vào phòng họp làm công tác tư tưởng.', allowedEffects: ['verdict', 'mood', 'relationship', 'memory'],
+    crisis: { kind: 'morale_talk', title: 'Sếp làm công tác tư tưởng', note: 'Tinh thần anh em đi xuống', pick: 'unmoved', variant: 'all', topic: 'vực lại tinh thần' },
+  });
+  const cases: [SceneRequest, unknown, string | null, string][] = [
+    [meet, 'plan_b', 'plan_b', 'crisis_meeting: "plan_b" giữ nguyên'],
+    [meet, 'Phương án C', 'plan_c', 'crisis_meeting: "Phương án C" → plan_c'],
+    [meet, 'bỏ qua', null, 'crisis_meeting: rác → null (Director dùng lựa chọn dự phòng)'],
+    [pep, 'inspired', 'inspired', 'pep_talk: "inspired" giữ nguyên'],
+    [pep, 'chưa thuyết phục được', 'unmoved', 'pep_talk: "chưa thuyết phục được" → unmoved'],
+    [pep, null, null, 'pep_talk: null → null'],
+    // phủ định ngay trước từ "tốt" (rà soát 2026-11-03: trước đây "chưa xuôi" / "not moved" bị đọc thành inspired)
+    [pep, 'chưa xuôi', 'unmoved', 'pep_talk: "chưa xuôi" → unmoved'],
+    [pep, 'not moved', 'unmoved', 'pep_talk: "not moved" → unmoved'],
+    [pep, 'xuôi rồi', 'inspired', 'pep_talk: "xuôi rồi" → inspired'],
+    // phủ định cách từ "tốt" 1–3 từ (rà soát vòng 3): "chưa đủ thuyết phục", "not really convinced"
+    [pep, 'chưa đủ thuyết phục', 'unmoved', 'pep_talk: "chưa đủ thuyết phục" → unmoved'],
+    [pep, 'not really convinced', 'unmoved', 'pep_talk: "not really convinced" → unmoved'],
+    // phủ định từ "xấu" → giá trị tốt
+    [sceneReq({ type: 'resign_talk', participants: ['tu', 'ngoc'], locationLabel: 'Phòng họp nhỏ', situation: 'Tú chán việc, xin gặp Ngọc (HR) nói chuyện nghỉ việc.', minLines: 4, maxLines: 8, allowedEffects: ['mood', 'relationship', 'memory', 'verdict'] }),
+      'không nghỉ việc nữa', 'stay', 'resign_talk: "không nghỉ việc nữa" → stay'],
+    // trả số thứ tự → phương án thứ n TRONG DANH SÁCH đã đưa (bỏ chữ cái: a, c, d → "2" là plan_c)
+    [{ ...meet, crisis: { ...meet.crisis!, options: [options[0], options[2], { code: 'plan_d', label: 'sếp bỏ tiền túi' }] } }, '2', 'plan_c', 'crisis_meeting: "2" với phương án a/c/d → plan_c (theo thứ tự đã đưa)'],
+    // số vượt danh sách → đọc như chữ cái nếu phương án đó có trong danh sách, không thì null
+    [{ ...meet, crisis: { ...meet.crisis!, options: [options[0], options[2]] } }, '3', 'plan_c', 'crisis_meeting: "3" với phương án a/c → plan_c (đọc như chữ cái c)'],
+    [{ ...meet, crisis: { ...meet.crisis!, options: [options[0], options[2]] } }, '4', null, 'crisis_meeting: "4" với phương án a/c → null'],
+  ];
+  for (const [req, v, expect, label] of cases) {
+    script.push((_r, res) => sendJson(res, 200, completion(sceneJson({ lines: twoLines(req.participants[0], req.participants[1]), summary: 'x', verdict: v }))));
+    const r = await v3.generateScene(req, ctx, 'llm');
+    check(label, r.source === 'llm' && r.verdict === expect, `verdict=${String(r.verdict)}`);
+  }
+  check('prompt crisis_meeting: khối PHƯƠNG ÁN đủ mã + dòng verdict liệt kê đúng 3 mã', (() => {
+    const u = buildSceneUserPrompt(meet, ctx);
+    return /PHƯƠNG ÁN \(chốt đúng 1, ghi mã vào verdict\): plan_a = thắt lưng/.test(u) && /plan_c = nói thẳng/.test(u)
+      && /verdict: một trong "plan_a" \| "plan_b" \| "plan_c"/.test(u) && !/plan_d/.test(u);
+  })());
+  check('prompt pep_talk: có BỐI CẢNH + verdict inspired/unmoved', (() => {
+    const u = buildSceneUserPrompt(pep, ctx);
+    return /BỐI CẢNH: Sếp làm công tác tư tưởng/.test(u) && /verdict: "inspired" hoặc "unmoved"/.test(u);
+  })());
+  let okMeet = true, okPep = true;
+  for (let i = 0; i < 8; i++) {
+    const m = await v3.generateScene(meet, ctx, 'offline');
+    if (m.verdict !== 'plan_c' || m.lines.length < 4 || !m.lines.some((l) => /lương trễ vài ngày/.test(l.text))) okMeet = false;
+    const z = await v3.generateScene(pep, ctx, 'offline');
+    if (z.verdict !== 'unmoved' || z.lines.length < 4 || z.lines[0].speaker !== 'hung') okPep = false;
+  }
+  check('offline crisis_meeting: verdict = lựa chọn dự phòng, câu chốt nhắc đúng phương án', okMeet);
+  check('offline pep_talk: verdict = lựa chọn dự phòng, sếp mở lời, ≥ 4 câu', okPep);
+  // v4/v5: dò con số giá (rà soát 2026-11-03: trước đây lọt "5tr7", "199.000₫", "1.290.000"; bắt nhầm "20k view", "1 đồng nghiệp")
+  const priceYes = ['có 5tr7 thôi', 'giá 1tr2 à', '199.000₫', '₫199.000', 'có 1.290.000 à', '390k', '1,05tr', '2 triệu', '150.000đ',
+    '390k like new', '199.000', '1290000', '2 trăm nghìn'];
+  const priceNo = ['màn 2K', '4K nét', '27 inch', '3 tháng', '210Hz', '20.000mAh', '20k view', '1 triệu lượt xem', '10k bước', '1 đồng nghiệp', '2 củ khoai', '8.000 bước',
+    '1tr7 view', '300 likes', '3 người xem', '12 lần', '1600 dpi'];
+  check('hasPrice: bắt mọi kiểu giá, không bắt số đếm / thông số', priceYes.every(hasPrice) && !priceNo.some(hasPrice),
+    `lọt: ${priceYes.filter((t) => !hasPrice(t)).join(' | ') || '—'} · bắt nhầm: ${priceNo.filter(hasPrice).join(' | ') || '—'}`);
+}
+
+// ---------------------------------------------------------------- 12c. thoại offline: sản phẩm, hỏi han, họp, truyền lửa
+section('12c. Thoại offline — sản phẩm (không nhận vơ "đã xài", cớ đúng ngữ pháp, không lặp tên), hỏi han / thương lượng, họp, truyền lửa');
+{
+  const fold = (t: string) => t.normalize('NFC').toLowerCase();
+  /** câu nhắc lại tên gọi đời thường lần 2 ("lót chuột hình mèo, vải in hình mèo") */
+  const repeatsName = (text: string, short: string): boolean => {
+    const t = fold(text), sh = fold(short);
+    const i = t.indexOf(sh);
+    if (i < 0) return false;
+    const rest = `${t.slice(0, i)} ${t.slice(i + sh.length)}`;
+    const w = sh.split(/\s+/).filter(Boolean);
+    for (let k = 0; k + 1 < w.length; k++) if (rest.includes(`${w[k]} ${w[k + 1]}`)) return true;
+    return false;
+  };
+  const CLAIM_MENTION = /mới mua|xài rồi|săn được|xài thấy ok|mới chốt đơn|mới đặt|xài sướng|từ hồi có/iu;
+  const BAD_HOOK = /hoài|quá trời|hay than|cũng vậy nè/iu;
+  const prods = getProducts();
+  const themeHooks = SHOPPING_THEMES.map((t) => t.hook);
+  const bad: string[] = [];
+  let n = 0;
+  const base = (p: (typeof prods)[number]) => ({
+    id: p.id, name: p.name, pitch: p.pitch, short: shortNameOf(p),
+    ...(p.spoken ? { spoken: p.spoken } : {}), ...(p.facts ? { facts: p.facts } : {}), ...(p.avoid ? { avoid: p.avoid } : {}),
+  });
+  for (const p of prods) {
+    const short = shortNameOf(p);
+    for (const hook of ['', ...(p.hooks ?? []), ...themeHooks]) {
+      for (const [type, channel] of [['pantry_chat', 'office'], ['group_chat', 'group'], ['celebration', 'office']] as const) {
+        const r = offlineScene(sceneReq({
+          type, channel, participants: ['tram', 'tung', 'vy'], locationLabel: channel === 'group' ? 'Nhóm Zalo "Anh em văn phòng"' : 'Pantry',
+          situation: 'Ba người tám chuyện lúc nghỉ tay.', minLines: 4, maxLines: 8,
+          product: { ...base(p), preferSpeaker: 'tram', mode: 'mention', ...(hook ? { hook } : {}) },
+        }), ctx);
+        n++;
+        const pl = r.lines.filter((l) => l.product);
+        if (pl.length !== 1) { bad.push(`${p.id}/${type}: ${pl.length} câu sản phẩm`); continue; }
+        const t = pl[0].text;
+        if (CLAIM_MENTION.test(t) && !CLAIM_MENTION.test(hook)) bad.push(`nhận vơ (${p.id}/${type}): ${t}`);
+        if (BAD_HOOK.test(t) && !BAD_HOOK.test(hook)) bad.push(`cớ sai ngữ pháp (${p.id}/${type}): ${t}`);
+        if (t.length > 200) bad.push(`dài ${t.length} (${p.id})`);
+        if (!hook && repeatsName(t, short)) bad.push(`lặp tên (${p.id}/${type}): ${t}`);
+      }
+    }
+  }
+  check(`offline câu sản phẩm (chưa có món) × ${n}: đúng 1 câu, không "mới mua / xài rồi", cớ đúng ngữ pháp, không lặp tên, ≤ 200 ký tự`, !bad.length, bad.slice(0, 4).join(' | '));
+
+  // phòng trưng bày: người khoe chưa có món (showroom) → không câu nào kể đã dùng; đã có (owner) → người đó kể, không "để trong giỏ"
+  const CLAIM_SHOWROOM = /xài thấy được|xài rồi mới dám|mang cái ở nhà|kể trải nghiệm|đồ nào mới mua|shop gửi đồ|xài thiệt hay|được một thời gian|mua rồi nè|ưng nhất kệ|y chang ở nhà|về mới thấy|xài lâu rồi/iu;
+  const BUYER_TALK = /giỏ hàng hai tuần|đang tính rinh về|mê cái|xem review cái/iu;
+  const srBad: string[] = [];
+  for (let i = 0; i < 4 * prods.length; i++) {
+    const p = prods[i % prods.length];
+    const req = (mode: 'showroom' | 'owner') => sceneReq({
+      type: 'showroom_chat', participants: ['tram', 'tung', 'vy'], locationLabel: 'Kệ công nghệ & nhà cửa',
+      situation: 'Trâm, Tùng, Vy đứng trước kệ ở phòng trưng bày.', minLines: 4, maxLines: 8,
+      product: { ...base(p), preferSpeaker: 'tram', mode },
+    });
+    const a = offlineScene(req('showroom'), ctx);
+    for (const l of a.lines) if (CLAIM_SHOWROOM.test(l.text)) srBad.push(`chưa có mà kể đã dùng: ${l.speaker}: ${l.text}`);
+    if (a.lines.filter((l) => l.product).length !== 1) srBad.push(`showroom ${p.id}: không đúng 1 câu sản phẩm`);
+    const b = offlineScene(req('owner'), ctx);
+    if (!b.lines.some((l) => l.product && l.speaker === 'tram')) srBad.push(`owner ${p.id}: người có món không có câu sản phẩm`);
+    for (const l of b.lines) if (l.speaker === 'tram' && BUYER_TALK.test(l.text)) srBad.push(`owner nói như chưa mua: ${l.text}`);
+  }
+  check(`offline showroom_chat × ${8 * prods.length}: người chưa có món không kể "đã xài"; người đã có kể lại, không "để trong giỏ hàng"`, !srBad.length, srBad.slice(0, 4).join(' | '));
+
+  // hỏi han riêng: hướng đã chốt nói với chính người đó (không viết thường tên, không gọi tên ngôi thứ ba); thương lượng có lời riêng
+  const sup = (why: string) => sceneReq({
+    type: 'desk_visit', participants: ['ngoc', 'tu'], locationLabel: 'Bàn của Tú', minLines: 4, maxLines: 7,
+    situation: `Ngọc (HR) đi tới bàn Tú (Backend Developer) để ${why}. Lúc đó Tú đang code. Mục tiêu: nói chuyện riêng, nhỏ nhẹ: Ngọc hỏi han.`,
+  });
+  let okSup = true, okDeal = true, okConsole = true;
+  const supSample: string[] = [];
+  for (let i = 0; i < 12; i++) {
+    const r1 = offlineScene(sup('cho Tú nghỉ phép vài hôm, team chia nhau gánh việc'), ctx);
+    const txt1 = r1.lines.map((l) => l.text).join(' | ');
+    if (!/nghỉ phép vài hôm/.test(txt1) || /(?<![\p{L}])tú(?![\p{L}])/u.test(txt1)) { okSup = false; supSample.push(txt1); }
+    const r2 = offlineScene(sup('thương lượng: Tú được như ý nhưng nhận thêm việc khác bù lại'), ctx);
+    const txt2 = r2.lines.map((l) => l.text).join(' | ');
+    if (!/được như ý/.test(txt2) || /thương lượng:/.test(txt2) || /lo cho mình trước|đừng ôm một mình/.test(txt2)) { okDeal = false; supSample.push(txt2); }
+    const r3 = offlineScene(sup('hỏi han vì thấy dạo này khác lạ'), ctx);
+    if (r3.lines.some((l) => /bàn rồi nè|khỏi lo:/.test(l.text))) { okConsole = false; supSample.push(r3.lines.map((l) => l.text).join(' | ')); }
+  }
+  check('offline hỏi han: nói hướng đã chốt với chính người đó (không viết thường / gọi tên "tú")', okSup, supSample[0] ?? '');
+  check('offline thương lượng (chống đối): lời thương lượng riêng, không an ủi, không lộ nhãn "thương lượng:"', okDeal, supSample[0] ?? '');
+  check('offline hỏi han khi công ty chưa có hướng: không nói "mọi người bàn rồi"', okConsole, supSample[0] ?? '');
+
+  // họp xử lý: câu "triển khai liền" không đứng trước câu chốt; câu đệm của chủ trì do chủ trì nói
+  const meet = sceneReq({
+    type: 'crisis_meeting', participants: ['hung', 'ngoc', 'phat', 'khoa'], locationLabel: 'Phòng họp', minLines: 8, maxLines: 10,
+    situation: 'Sếp Hùng triệu tập họp kín vì chuyện kẹt tiền xoay vòng vốn.', allowedEffects: ['verdict', 'mood', 'relationship', 'memory'],
+    crisis: { kind: 'cash_crunch', title: 'Kẹt tiền xoay vòng vốn', note: 'Khách lớn chậm thanh toán', options: [{ code: 'plan_a', label: 'thắt lưng buộc bụng' }, { code: 'plan_c', label: 'nói thẳng với anh em: lương trễ vài ngày' }], pick: 'plan_c' },
+  });
+  const CHAIR_FILL = /^(Ừ, nói tiếp đi|Còn ai ý kiến gì nữa không|Từ từ, từng người một|Nói ngắn gọn thôi, mình còn phải quyết)/u;
+  const OK_LINE = /triển khai liền|lo phần của|báo anh em nhẹ nhàng|cập nhật liên tục/u;
+  let okCm = true;
+  const cmSample: string[] = [];
+  // họp 2 người: thành viên nói liền 2 câu → câu đệm chen giữa do chủ trì nói, nằm TRƯỚC câu chốt
+  const meet2 = { ...meet, participants: ['hung', 'ngoc'], minLines: 6, maxLines: 8 };
+  for (let i = 0; i < 60; i++) {
+    const r = offlineScene(i % 2 ? meet2 : meet, ctx);
+    const di = r.lines.findIndex((l) => /lương trễ vài ngày/.test(l.text));
+    const early = r.lines.slice(0, Math.max(0, di)).some((l) => OK_LINE.test(l.text));
+    const wrongChair = r.lines.some((l) => CHAIR_FILL.test(l.text) && l.speaker !== 'hung');
+    if (di < 0 || early || wrongChair) { okCm = false; cmSample.push(r.lines.map((l) => `${l.speaker}: ${l.text}`).join(' | ')); }
+  }
+  check('offline crisis_meeting (8–10 câu, có câu đệm): không "triển khai liền" trước câu chốt; câu đệm chủ trì do chủ trì nói', okCm, cmSample[0] ?? '');
+
+  // truyền lửa: câu đệm của người nói không vào miệng người nghe; không gộp "…? Dạ, em nghe rồi" thành một bong bóng
+  const pepReq = (variant: 'all' | 'one', pick: 'inspired' | 'unmoved') => sceneReq({
+    type: 'pep_talk', participants: variant === 'all' ? ['hung', 'tu', 'vy', 'phat', 'bao'] : ['hung', 'tu'], locationLabel: 'Phòng họp',
+    minLines: variant === 'all' ? 7 : 6, maxLines: 9,
+    situation: 'Sếp Hùng làm công tác tư tưởng.', allowedEffects: ['verdict', 'mood', 'relationship', 'memory'],
+    crisis: { kind: 'morale_talk', title: 'Sếp làm công tác tư tưởng', note: 'Tinh thần đi xuống', pick, variant, topic: 'vực lại tinh thần' },
+  });
+  const SPEAKER_FILL = /ai có ý gì cứ nói|Mình nói chuyện thẳng thắn|nói thẳng để|mong .* hiểu cho/u;
+  let okPt = true;
+  const ptSample: string[] = [];
+  for (let i = 0; i < 30; i++) {
+    for (const r of [offlineScene(pepReq('all', 'unmoved'), ctx), offlineScene(pepReq('one', i % 2 ? 'unmoved' : 'inspired'), ctx)]) {
+      const wrong = r.lines.some((l) => l.speaker !== 'hung' && SPEAKER_FILL.test(l.text));
+      const merged = r.lines.some((l) => /\?\s+(Dạ|Ờ)[,… ]/u.test(l.text));
+      if (wrong || merged) { okPt = false; ptSample.push(r.lines.map((l) => `${l.speaker}: ${l.text}`).join(' | ')); }
+    }
+  }
+  check('offline pep_talk: câu đệm đúng vai (người nghe không "nói thẳng để … hiểu"), không gộp câu hỏi với câu kết', okPt, ptSample[0] ?? '');
+}
+
 // ---------------------------------------------------------------- 13. generateBeats
 section('13. v3 — generateBeats: parse + lọc theo menu/nhân sự, fallback offline, không ai xem');
 {
@@ -767,6 +973,37 @@ section('14. v3 — kích cỡ prompt (ước lượng token, system + user) ≤
     ['layoff (3 người)', sceneReq({ type: 'layoff', participants: ['hung', 'ngoc', 'tu'], aboutId: 'tu', situation: 'Công ty lỗ, cắt giảm Tú.', minLines: 4, maxLines: 8, allowedEffects: ['mood', 'relationship', 'memory'] }), 2500, '≤ 2.5k'],
     ['layoff (4 người)', sceneReq({ type: 'layoff', participants: ['hung', 'ngoc', 'tu', 'phat'], aboutId: 'tu', situation: 'Công ty lỗ, cắt giảm Tú.', minLines: 4, maxLines: 8, allowedEffects: ['mood', 'relationship', 'memory'] }), sysReal + base4 + 150, 'lunch 4 người + 150'],
   ];
+  // v4: khối sản phẩm đủ facts / avoid / chuyện không được phình lại (rà soát 2026-11-03: từng đẩy gần mọi cảnh có sản phẩm vượt ngân sách)
+  const base2 = tok(sceneReq({ type: 'desk_visit', participants: ['tram', 'tung'], situation: 'Trâm đi tới bàn Tùng để hỏi chuyện deadline.', minLines: 3, maxLines: 7 }));
+  cases.push(['desk_visit + sản phẩm đủ trường (2 người)', sceneReq({
+    type: 'desk_visit', participants: ['tram', 'tung'], situation: 'Trâm đi tới bàn Tùng để hỏi chuyện deadline.', minLines: 3, maxLines: 7,
+    product: {
+      id: 'man-hinh-aoc', name: 'Màn hình AOC 27 inch 2K 210Hz', pitch: 'Màn hình 27 inch 2K tấm nền Fast IPS, 210Hz, chơi game lẫn làm việc đều mượt.', preferSpeaker: 'tram',
+      short: 'màn hình 27 inch 2K', facts: 'Màn hình 27 inch, độ phân giải 2K, tấm nền Fast IPS, tần số quét 210Hz, có chân đế chỉnh góc nghiêng.',
+      avoid: 'không nói bảo hành bao lâu, không so sánh với hãng khác, không nói "rẻ nhất".',
+      angle: 'Trâm mua về thấy ổn bất ngờ, giờ rủ Tùng dùng thử; mỗi lần sửa clip là khen màu đẹp', mode: 'owner', priceFeel: 'vua',
+    },
+  }), sysReal + base2 + 320, 'ghé bàn 2 người + 320 (khối sản phẩm ≈ 290: có thật, CẤM, chuyện, luật giá)']);
+  // nhóm chat 3 người + phòng trưng bày (2 chế độ): cùng mức dư cho khối sản phẩm (PRODUCT_TOKEN_ALLOWANCE trong prompts.ts)
+  const fullProduct = {
+    id: 'man-hinh-aoc', name: 'Màn hình AOC 27 inch 2K 210Hz', pitch: 'Màn hình 27 inch 2K tấm nền Fast IPS, 210Hz.', preferSpeaker: 'tram',
+    short: 'màn hình 27 inch 2K', facts: 'Màn hình 27 inch, độ phân giải 2K, tấm nền Fast IPS, tần số quét 210Hz, có chân đế chỉnh góc nghiêng.',
+    avoid: 'không nói bảo hành bao lâu, không so sánh với hãng khác, không nói "rẻ nhất".',
+    angle: 'Trâm để ý món này cả tuần, hôm nay rủ Tùng với Vy coi thử (rắc rối gợi ý: màn hình cũ mờ mắt)', priceFeel: 'vua' as const,
+  };
+  const baseG3 = tok(sceneReq({ type: 'group_chat', channel: 'group', participants: ['tram', 'tung', 'vy'], locationLabel: 'Nhóm Zalo "Anh em văn phòng"', situation: 'Nhóm chat tám chuyện giờ nghỉ.', minLines: 4, maxLines: 8 }));
+  cases.push(['group_chat 3 người + sản phẩm đủ trường', sceneReq({
+    type: 'group_chat', channel: 'group', participants: ['tram', 'tung', 'vy'], locationLabel: 'Nhóm Zalo "Anh em văn phòng"', situation: 'Nhóm chat tám chuyện giờ nghỉ.',
+    minLines: 4, maxLines: 8, product: { ...fullProduct, mode: 'mention' },
+  }), sysReal + baseG3 + 320, 'nhóm chat 3 người + 320 (khối sản phẩm)']);
+  const baseS3 = tok(sceneReq({ type: 'showroom_chat', participants: ['tram', 'tung', 'vy'], locationLabel: 'Kệ công nghệ & nhà cửa', situation: 'Trâm, Tùng, Vy đứng trước kệ ở phòng trưng bày. Chuyện quanh món này: Trâm để ý món này cả tuần.', minLines: 4, maxLines: 8 }));
+  for (const mode of ['showroom', 'owner'] as const) {
+    cases.push([`showroom_chat 3 người (${mode}) + sản phẩm đủ trường`, sceneReq({
+      type: 'showroom_chat', participants: ['tram', 'tung', 'vy'], locationLabel: 'Kệ công nghệ & nhà cửa',
+      situation: 'Trâm, Tùng, Vy đứng trước kệ ở phòng trưng bày. Chuyện quanh món này: Trâm để ý món này cả tuần.', minLines: 4, maxLines: 8,
+      product: { ...fullProduct, mode },
+    }), sysReal + baseS3 + 320, 'phòng trưng bày 3 người + 320 (khối sản phẩm, không lặp "Chuyện")']);
+  }
   for (const [label, req, cap, why] of cases) {
     const t = tok(req);
     check(`${label}: user ${t} + system ≈ ${sysReal + t} token thật (ước lượng thô ${sysTok + t}) ≤ ${cap} (${why})`, sysReal + t <= cap && t <= 2000);

@@ -2,7 +2,7 @@
 // Phần động (màn hình, bảng KPI, TV, đèn server, hơi cà phê...) vẽ mỗi khung hình qua drawOverlay.
 import { hashStr, hash2 } from '../util.js';
 import {
-  fillRR, strokeRR, rrPath, rect, ellipse, circle, line, box, makeCanvas, FONT, shade,
+  fillRR, strokeRR, rrPath, rect, ellipse, circle, line, box, makeCanvas, FONT, shade, fitText, drawEmoji,
 } from './draw.js';
 
 // ------------------------------------------------------------------ hình học dùng chung
@@ -56,22 +56,25 @@ export function whiteboardGeom(f) {
   return { board: { x: bx, y: by, w: bw, h: bh }, inner, dyn, side };
 }
 
-/** kệ trưng bày: ô đặt sản phẩm (tối đa 5 ô / kệ) */
+/** kệ trưng bày v4: 2 tầng × 7 ô (slot 0–6 tầng trên, 7–13 tầng dưới) — khớp SHELF_SLOTS ở src/content/products.ts */
+export const SHELF_PER_TIER = 7;
+export const SHELF_TIERS = 2;
 export function shelfGeom(f) {
   const { x, y, w } = f;
-  const n = Math.max(1, Math.min(5, Math.round(w / 0.8)));
-  const pitch = w / n;
-  const cardW = Math.min(0.7, pitch * 0.86), cardH = 0.7;
+  const n = SHELF_PER_TIER;
+  const pitch = (w - 0.16) / n;
+  const cardW = Math.min(0.5, pitch * 0.9), cardH = 0.44;
   const unit = { x: x + 0.03, y: y - 0.8, w: w - 0.06, h: 1.8 };
-  const header = { x: x + 0.08, y: y - 0.76, w: w - 0.16, h: 0.36 };
-  const tierY = y + 0.46; // mép trước tấm kệ (sản phẩm đứng trên)
-  const strip = { y: tierY + 0.09, h: 0.2 }; // dải nhãn tên
+  const header = { x: x + 0.08, y: y - 0.77, w: w - 0.16, h: 0.3 };
+  const tiers = [y + 0.1, y + 0.66]; // mép trước từng tấm kệ (sản phẩm đứng trên)
   const slots = [];
-  for (let i = 0; i < n; i++) {
-    const cx = x + pitch * (i + 0.5);
-    slots.push({ i, cx, x: cx - cardW / 2, y: tierY - cardH - 0.03, w: cardW, h: cardH, labelY: strip.y });
+  for (let t = 0; t < SHELF_TIERS; t++) {
+    for (let i = 0; i < n; i++) {
+      const cx = x + 0.08 + pitch * (i + 0.5);
+      slots.push({ i: t * n + i, tier: t, cx, x: cx - cardW / 2, y: tiers[t] - cardH - 0.02, w: cardW, h: cardH });
+    }
   }
-  return { unit, header, tierY, strip, slots, cardW, cardH, labelH: strip.h, pitch };
+  return { unit, header, tiers, slots, cardW, cardH, pitch, perTier: n };
 }
 
 /** bục trưng bày giữa phòng: bệ tròn + lồng kính */
@@ -863,7 +866,7 @@ function paintSink(ctx, f) {
 // ------------------------------------------------------------------ phòng trưng bày
 const SHELF_THEME = {
   shelf_beauty: { wood: '#f3dfe6', woodD: '#d9b4c2', back: '#fff4f8', head: '#f472b6', headText: '#ffffff', glow: 'rgba(251,207,232,0.55)', icon: '💄' },
-  shelf_tech: { wood: '#dbe7f6', woodD: '#aec6e8', back: '#f2f7ff', head: '#2563eb', headText: '#ffffff', glow: 'rgba(191,219,254,0.6)', icon: '🎧' },
+  shelf_tech: { wood: '#dbe7f6', woodD: '#aec6e8', back: '#f2f7ff', head: '#2563eb', headText: '#ffffff', glow: 'rgba(191,219,254,0.6)', icon: '🔌' },
 };
 
 function paintShelfUnit(ctx, f) {
@@ -873,34 +876,41 @@ function paintShelfUnit(ctx, f) {
   // tủ: thân + bóng
   fillRR(ctx, u.x + 0.04, u.y + 0.08, u.w, u.h, 0.08, 'rgba(0,0,0,0.18)');
   fillRR(ctx, u.x, u.y, u.w, u.h, 0.08, th.wood);
-  // tấm lưng sáng (đèn hắt từ trên xuống)
-  const backTop = g.header.y + g.header.h + 0.05;
-  fillRR(ctx, u.x + 0.07, backTop, u.w - 0.14, g.tierY - backTop - 0.02, 0.05, th.back);
-  const grad = ctx.createLinearGradient(0, backTop, 0, g.tierY);
+  // tấm lưng sáng (đèn hắt từ trên xuống) phía sau cả 2 tầng
+  const backTop = g.header.y + g.header.h + 0.04;
+  const backBot = g.tiers[1];
+  fillRR(ctx, u.x + 0.07, backTop, u.w - 0.14, backBot - backTop, 0.05, th.back);
+  const grad = ctx.createLinearGradient(0, backTop, 0, backBot);
   grad.addColorStop(0, th.glow); grad.addColorStop(1, 'rgba(255,255,255,0)');
-  fillRR(ctx, u.x + 0.07, backTop, u.w - 0.14, g.tierY - backTop - 0.02, 0.05, grad);
-  rect(ctx, u.x + 0.14, backTop + 0.01, u.w - 0.28, 0.035, 'rgba(255,255,255,0.95)');
-  // bảng tên kệ
+  fillRR(ctx, u.x + 0.07, backTop, u.w - 0.14, backBot - backTop, 0.05, grad);
+  rect(ctx, u.x + 0.14, backTop + 0.01, u.w - 0.28, 0.03, 'rgba(255,255,255,0.95)');
+  // bảng tên kệ (co chữ cho vừa: "LÀM ĐẸP & THỜI TRANG")
   fillRR(ctx, g.header.x, g.header.y, g.header.w, g.header.h, 0.07, th.head);
-  rect(ctx, g.header.x + 0.07, g.header.y + 0.035, g.header.w - 0.14, 0.025, 'rgba(255,255,255,0.35)');
-  ctx.fillStyle = th.headText;
-  ctx.font = `800 0.24px ${FONT}`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(`${th.icon} ${f.label || ''}`.trim(), g.header.x + g.header.w / 2, g.header.y + g.header.h / 2 + 0.012);
-  // tấm kệ: mặt trên + mép trước
-  rect(ctx, u.x + 0.04, g.tierY - 0.06, u.w - 0.08, 0.08, th.woodD);
-  rect(ctx, u.x + 0.04, g.tierY + 0.02, u.w - 0.08, 0.04, 'rgba(0,0,0,0.14)');
-  // dải nhãn tên sản phẩm
-  fillRR(ctx, u.x + 0.07, g.strip.y - 0.01, u.w - 0.14, g.strip.h + 0.02, 0.03, '#fffdf9');
-  ctx.fillStyle = 'rgba(0,0,0,0.08)';
-  for (let k = 1; k < g.slots.length; k++) ctx.fillRect(f.x + g.pitch * k - 0.01, g.strip.y + 0.03, 0.02, g.strip.h - 0.06);
+  rect(ctx, g.header.x + 0.07, g.header.y + 0.03, g.header.w - 0.14, 0.022, 'rgba(255,255,255,0.35)');
+  // biểu tượng vẽ riêng (emoji trong chuỗi cỡ 0,2 bị Chrome vẽ lệch đè lên chữ đầu)
+  const hcx = g.header.x + g.header.w / 2, hcy = g.header.y + g.header.h / 2 + 0.01;
+  const isz = th.icon ? 0.2 : 0, gap = th.icon ? 0.06 : 0, shift = (isz + gap) / 2;
+  const tw = fitText(ctx, f.label || '', hcx + shift, hcy, g.header.w - 0.24 - isz - gap, 0.2, 800, th.headText);
+  if (th.icon) drawEmoji(ctx, th.icon, hcx + shift - tw / 2 - gap - isz / 2, hcy - 0.005, isz);
+  // 2 tấm kệ: mặt trên + mép trước + bóng; vách ngăn mờ giữa các ô
+  for (const ty of g.tiers) {
+    rect(ctx, u.x + 0.04, ty - 0.05, u.w - 0.08, 0.07, th.woodD);
+    rect(ctx, u.x + 0.04, ty + 0.02, u.w - 0.08, 0.035, 'rgba(0,0,0,0.14)');
+  }
+  ctx.fillStyle = 'rgba(0,0,0,0.05)';
+  for (let k = 1; k < g.perTier; k++) {
+    const vx = f.x + 0.08 + g.pitch * k - 0.006;
+    ctx.fillRect(vx, backTop + 0.06, 0.012, g.tiers[0] - backTop - 0.12);
+    ctx.fillRect(vx, g.tiers[0] + 0.1, 0.012, g.tiers[1] - g.tiers[0] - 0.16);
+  }
   // tủ dưới có ngăn kéo
-  const cabY = g.strip.y + g.strip.h + 0.05;
+  const cabY = g.tiers[1] + 0.07;
   rect(ctx, u.x + 0.04, cabY, u.w - 0.08, u.y + u.h - cabY - 0.04, th.woodD);
   ctx.fillStyle = 'rgba(0,0,0,0.12)';
-  for (let k = 1; k < g.slots.length; k++) ctx.fillRect(f.x + g.pitch * k - 0.01, cabY + 0.04, 0.02, u.y + u.h - cabY - 0.12);
-  for (const sl of g.slots) fillRR(ctx, sl.cx - 0.09, cabY + (u.y + u.h - cabY) / 2 - 0.03, 0.18, 0.05, 0.02, 'rgba(255,255,255,0.7)');
+  const drawers = 4;
+  const dw = (u.w - 0.08) / drawers;
+  for (let k = 1; k < drawers; k++) ctx.fillRect(u.x + 0.04 + dw * k - 0.01, cabY + 0.03, 0.02, u.y + u.h - cabY - 0.1);
+  for (let k = 0; k < drawers; k++) fillRR(ctx, u.x + 0.04 + dw * (k + 0.5) - 0.12, cabY + (u.y + u.h - cabY) / 2 - 0.03, 0.24, 0.05, 0.02, 'rgba(255,255,255,0.7)');
 }
 
 function paintDisplayTable(ctx, f) {

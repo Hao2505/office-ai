@@ -14,7 +14,8 @@ import type { Config } from '../config.js';
 import type { Pt } from './map.js';
 import { SPOTS } from './map.js';
 import { ACTIVITY_FLAVOR, NEWS_CATEGORIES, PERSONAL_EVENTS, newsBlocked, type TopicCategory } from '../content/catalog.js';
-import { pickProduct, pickShelfProduct, toPublic } from '../content/products.js';
+import { contextScore, getProduct, getProducts, pickProduct, pickShelfProduct, priceFeelOf, shortNameOf, toPublic } from '../content/products.js';
+import { PRODUCT_ANGLES, SHOPPING_THEMES, fillAngle, themeByKey, type ProductAngle, type ShoppingTheme } from '../content/shopping.js';
 import {
   SCENE_DEFS, SPOT_LABELS, AREA_LABELS, GROUP_CHAT_LABEL, COMPANY_CHAT_LABEL, STANDUP_ROLES, DEV_ROLES,
   GROUP_REASONS, COMPANY_REASONS, CELEBRATION_REASONS, isSceneType, isTech, isBiz, rand, randInt, chance, clamp, fin, pick, shuffle,
@@ -26,6 +27,7 @@ import {
   sitWelcome,
   SHELF_LABEL, SHELF_SPOT, showroomAvailable, shelfAt, preferredShelf, findShowroomGroup, pickRecommender, sitShowroom,
   pickNewsGroup, newsRefOf, sitNewsChat, sitHrReview, sitResignTalk, sitRaiseRequest, sitPromotion, sitLayoff,
+  sitCrisisMeeting, sitPepTalk,
   type SceneDef, type SitKit, type Situation, type GroupReason, type CompanyReason, type ReasonData,
   type CelebrationReason, type BossCallReason, type CoLocation, type DeskVisitPick, type ShowroomGroup, type VisitTone,
   type HrDossierEntry,
@@ -37,7 +39,8 @@ import {
   validateDecisions, offlineDecisions, avgRatio, kpiRatios, promotedLabel, promotedTarget, layoffsInMonth, ACTION_LABEL,
   type Vacancy, type HrLedger, type GuardEnv,
 } from './hr.js';
-import { Showrunner, arcSummary, type Arc, type StoryAction, type StoryContext } from './story.js';
+import { Showrunner, arcSummary, sitWorldOf, type Arc, type StoryAction, type StoryContext } from './story.js';
+import { fillSit, isSituation, plansFor, situationDef, type PlanCode } from '../content/situations.js';
 import { getNews as newsSingleton } from '../news/store.js';
 import { getArchive as archiveSingleton } from './archive.js';
 
@@ -114,7 +117,15 @@ interface ArchiveApi {
   record?(kind: string, data: unknown): unknown;
 }
 
-const VERDICTS: Verdict[] = ['hired', 'rejected', 'stay', 'leave', 'approved', 'denied'];
+/**
+ * Verdict hợp lệ khi nhận kết quả cảnh (cleanResult). Record đầy đủ theo union `Verdict` để thêm giá trị mới mà quên ở đây
+ * thì typecheck báo — v5 từng quên plan_a..plan_d / inspired / unmoved nên mọi phương án AI chốt bị thay bằng lựa chọn dự phòng.
+ */
+const VERDICT_OK: Record<Verdict, true> = {
+  hired: true, rejected: true, stay: true, leave: true, approved: true, denied: true,
+  plan_a: true, plan_b: true, plan_c: true, plan_d: true, inspired: true, unmoved: true,
+};
+const VERDICTS = Object.keys(VERDICT_OK) as Verdict[];
 const NEWS_MIN_MINUTES_DEFAULT = 25;
 const STORY_MS = 3000;            // nhịp kiểm tra mạch truyện (giờ thật)
 const NEWS_USED_KEEP = 60;
@@ -177,6 +188,11 @@ interface SceneMeta {
   hint?: string;
   variant?: string;
   force?: boolean;
+  // --- v5: tình huống công ty
+  /** lựa chọn dự phòng đã chọn sẵn (offline viết thoại theo nó; AI trả sai mã thì dùng nó) */
+  pick?: string;
+  /** mã phương án đã đưa ra bàn, phân cách bằng dấu phẩy */
+  options?: string;
 }
 
 interface Draft {
@@ -188,6 +204,8 @@ interface Draft {
   news?: NewsItem;
   /** v3: hồ sơ xét nhân sự (hr_review) → req.hrDossier */
   hrDossier?: HrDossierEntry[];
+  /** v5: tình huống công ty (crisis_meeting / pep_talk) → req.crisis */
+  crisis?: SceneRequest['crisis'];
   place?: Record<string, Placement>;
   /** những người phải giữ chỗ cùng 1 nhóm SPOTS (thử lần lượt) — vd nói xấu ở góc vắng */
   joint?: { ids: string[]; groups: string[] };
@@ -205,6 +223,13 @@ interface Draft {
   productPitch?: string;
   /** người nên nói câu sản phẩm */
   productSpeaker?: string;
+  /** v4: kiểu chuyện / cớ (đã điền tên) + cớ ngắn cho câu mẫu + chế độ (unboxing, gift…) */
+  productAngle?: string;
+  productHook?: string;
+  productMode?: ProductMode;
+  productAngleKey?: string;
+  /** xác suất người nhắc chốt đơn sau cảnh (→ "hàng về, khui hộp") */
+  productBuys?: number;
   prio?: Priority;
   meta?: SceneMeta;
   title?: string;
@@ -241,6 +266,8 @@ interface Scene {
   teleported: boolean;
   product: Product | null;
   productShown: boolean;
+  /** v4: món này được mời vào cảnh theo kiểu chuyện nào (để ghi nhận + lên lịch giao hàng) */
+  offer?: ProductOffer | null;
   rumor?: { id: string; aboutId: string; isNew: boolean; tellerId: string };
   meta: SceneMeta;
   allowAbsent: Set<string>;
@@ -266,7 +293,7 @@ interface QData {
   /** interview: ứng viên đã sinh sẵn (không lưu xuống file) */
   candidate?: Persona;
   // --- v3 (chuỗi để lưu/khôi phục đơn giản)
-  /** desk_visit: giọng cảnh theo mạch truyện (tense | warm | makeup) */
+  /** desk_visit: giọng cảnh theo mạch truyện (tense | warm | makeup | unbox | gift | support) */
   tone?: string;
   /** standup: 'pitch' = buổi pitch ý tưởng */
   variant?: string;
@@ -282,6 +309,14 @@ interface QData {
   hint?: string;
   /** '1' = nút dev ép (bỏ nhịp/cap) */
   force?: string;
+  // --- v4: cảnh có món đồ đi kèm (khui hộp, tặng quà, chuyện mua sắm của AI biên kịch)
+  productId?: string;
+  productMode?: string;
+  productAngle?: string;
+  // --- v5: tình huống công ty (crisis_meeting / pep_talk)
+  kind?: string;
+  aId?: string;
+  bId?: string;
 }
 
 interface QItem {
@@ -298,12 +333,38 @@ interface QItem {
 interface Timer {
   id: string;
   at: number;       // phút game tuyệt đối
-  /** personal (v3) = sự kiện cá nhân ngẫu nhiên (ốm, kẹt xe, thất tình…) */
-  kind: 'clear_incident' | 'event' | 'personal';
+  /** personal (v3) = sự kiện cá nhân ngẫu nhiên (ốm, kẹt xe, thất tình…)
+   *  v4: theme = bắt đầu một "vụ mua sắm"; theme_end = kết vụ; delivery = shipper giao hàng cho agentId */
+  kind: 'clear_incident' | 'event' | 'personal' | 'theme' | 'theme_end' | 'delivery';
   incident?: 'server_down' | 'wifi_down';
   event?: DevEventName;
   agentId?: string;
+  productId?: string;
+  themeKey?: string;
+  tries?: number;
+  /** delivery: lúc đặt hàng (phút game) — đơn quá DELIVERY_MAX_AGE thì thôi (ngày văn phòng đóng cửa không tính lần giao hụt) */
+  since?: number;
 }
+
+/** v4: đơn hàng chờ quá lâu (văn phòng đóng cửa nhiều ngày / server tắt) thì bỏ — 5 ngày */
+const DELIVERY_MAX_AGE = 5 * 1440;
+
+/** v4: chế độ câu nhắc sản phẩm (xem SceneRequest.product.mode) */
+type ProductMode = NonNullable<NonNullable<SceneRequest['product']>['mode']>;
+
+/** v4: món đồ được mời vào một cảnh + "chuyện" của nó */
+interface ProductOffer {
+  product: Product;
+  angle: string;
+  hook?: string;
+  mode: ProductMode;
+  speaker?: string;
+  angleKey?: string;
+  buys: number;
+}
+
+/** v4: "vụ mua sắm" đang chạy */
+interface ThemeState { key: string; startedAt: number; until: number; announce: string }
 
 interface Boost { until: number; reason: GroupReason; data: ReasonData; used: number }
 
@@ -338,6 +399,16 @@ export class Director implements DirectorApi {
   private productBoostUntil = 0;
   private recentProducts: string[] = [];
   private productLock: string | null = null;
+  // --- v4: chuyện mua sắm (docs/04 §11)
+  private theme: ThemeState | null = null;
+  private recentThemes: string[] = [];
+  private lastThemeDay = -1;
+  private recentAngles: string[] = [];
+  /** số lần mỗi món đã được nhắc (xoay vòng cho đều 26 món) */
+  private productUses: Record<string, number> = {};
+  /** ai đang có món gì (mua về / được tặng) — để vài hôm sau họ quay lại giới thiệu cho người khác */
+  private owned: Record<string, { id: string; day: number }[]> = {};
+  private deliveriesToday = 0;
   private lastProductAt: number;
   /** v2: cảnh showroom_chat gần nhất (đồng hồ nội bộ) + cap riêng */
   private lastShowroomAt: number;
@@ -490,6 +561,14 @@ export class Director implements DirectorApi {
       const gone = this.queue.filter((q) => !(q.at >= tomorrow || q.until >= tomorrow));
       this.queue = this.queue.filter((q) => q.at >= tomorrow || q.until >= tomorrow);
       for (const q of gone) this.deferDecisionScene(q, 'hết ngày mà chưa diễn được');
+      // v4: hàng chưa kịp giao (giờ giao rơi sau giờ tan làm / đêm bị tua qua) → để ở lễ tân, sáng mai 09:30–11:00 nhận
+      // (như nhánh "vắng mặt" của deliver(); tối đa 2 lần dời — ngày không ai đi làm không tính; đơn quá 5 ngày thì thôi)
+      for (const t of this.timers) {
+        if (t.kind !== 'delivery' || t.at >= tomorrow) continue;
+        if (this.daySawPresence) t.tries = (t.tries ?? 0) + 1;
+        const stale = tomorrow - (t.since ?? t.at) > DELIVERY_MAX_AGE;
+        t.at = (t.tries ?? 0) > 2 || stale ? -1 : this.absFor(d + 1, randInt(570, 660));
+      }
       this.timers = this.timers.filter((t) => t.at >= tomorrow || t.kind === 'clear_incident');
     });
   }
@@ -677,6 +756,13 @@ export class Director implements DirectorApi {
 
   private planDay(day: number): void {
     if (this.plannedDay === day) return;
+    // v5: ngày văn phòng không ai làm (cuối tuần ở TIME_MODE=realtime, ngày server tắt bị bỏ qua) không tính vào tuổi
+    // mạch truyện — không thì tình huống mở chiều thứ Sáu bị expire() bỏ dở sáng thứ Hai sau khi đã có hậu quả.
+    // Chạy trước resetDay (resetDay xoá daySawPresence của ngày vừa qua).
+    if (this.plannedDay >= 1 && day > this.plannedDay) {
+      const idle = (day - this.plannedDay - 1) + (this.daySawPresence ? 0 : 1);
+      if (idle > 0) this.story.holdAges(idle);
+    }
     this.plannedDay = day;
     this.resetDay(day);
     const now = this.now();
@@ -729,6 +815,13 @@ export class Director implements DirectorApi {
       const a = at(randInt(500, 560));
       if (a > now) this.addTimer({ kind: 'personal', at: a });
     }
+    // v4: khoảng 1/2 số ngày có một "vụ mua sắm" (bốc thăm quà, thi góc làm việc, tổng vệ sinh…) — chọn vụ lúc bắt đầu
+    // vụ mua sắm cũ quá hạn mà chưa kết (qua đêm / khôi phục / đổi chế độ giờ) → bỏ, không chặn vụ hôm nay, không "khui quà" sáng hôm sau
+    if (this.theme && this.theme.until <= now) this.theme = null;
+    if (!this.theme && day !== this.lastThemeDay && chance(0.5)) {
+      const a = at(randInt(560, 840));
+      if (a > now) this.addTimer({ kind: 'theme', at: a });
+    }
     if (this.showrunnerEnabled) {
       const np = this.story.nextPlan();
       if (np < at(0) || np > at(1439)) this.story.schedule(at(randInt(550, 590)), 0);
@@ -753,6 +846,7 @@ export class Director implements DirectorApi {
     this.clapsToday = 0;
     this.companyToday = new Set();
     this.calledToday = new Set();
+    this.deliveriesToday = 0;
     for (const [id, g] of this.departed) if (day - g.day > 3) this.departed.delete(id);
     for (const id of Object.keys(this.lateDays)) {
       this.lateDays[id] = this.lateDays[id].filter((d) => day - d < 7);
@@ -824,6 +918,12 @@ export class Director implements DirectorApi {
         if (t.kind === 'clear_incident') this.clearIncident(t.incident);
         else if (t.kind === 'personal') {
           if (now - t.at < 60) this.personalEvent(t.agentId);
+        } else if (t.kind === 'theme') {
+          if (now - t.at < 90 && !this.theme) this.startTheme(themeByKey(t.themeKey));
+        } else if (t.kind === 'theme_end') {
+          this.endTheme(t.themeKey);
+        } else if (t.kind === 'delivery') {
+          this.deliver(t);
         } else if (t.event && now - t.at < 60 && this.world.activeAgents().length >= 2) {
           this.handleEvent(t.event, t.agentId ? { agentId: t.agentId } : undefined, true);
         }
@@ -907,6 +1007,9 @@ export class Director implements DirectorApi {
       case 'raise_request': return hrEligible(target) ? this.dRaiseRequest(target, d.retries) : 'drop';
       case 'promotion': return hrEligible(target) ? this.dPromotion(target, d.newLabel, d.retries) : 'drop';
       case 'layoff': return hrEligible(target) ? this.dLayoff(target, d.retries) : 'drop';
+      // ---- v5
+      case 'crisis_meeting': return this.dCrisisMeeting(q);
+      case 'pep_talk': return this.dPepTalk(q);
       case 'incident':
         // server đã chạy lại trước khi cảnh kịp diễn → bỏ (đừng hô "sập rồi" khi mọi thứ đã ổn)
         if (d.reason !== 'bug_prod' && w.company()?.incident !== 'server_down') return 'drop';
@@ -924,7 +1027,10 @@ export class Director implements DirectorApi {
       case 'desk_visit': {
         if ((d.initiatorId && !w.agent(d.initiatorId)) || (d.targetId && !w.agent(d.targetId))) return 'drop';
         const p = pickDeskVisit(w, (a) => this.free(a, 'normal'), { initiatorId: d.initiatorId, targetId: d.targetId, motiveKey: d.motiveKey });
-        return p ? this.dDeskVisit(p, d.why, asTone(d.tone)) : null;
+        if (!p) return null;
+        const draft = this.dDeskVisit(p, d.why, asTone(d.tone));
+        if (d.productId) this.attachProduct(draft, d.productId, asProductMode(d.productMode), d.productAngle, p.initiator, p.target);
+        return draft;
       }
       case 'gossip': {
         if (d.aboutId && d.note) return this.dGossipSeeded(d.aboutId, d.note, splitIds(d.exclude));
@@ -1217,7 +1323,13 @@ export class Director implements DirectorApi {
       return null;
     }
     const sid = `sc${w.day()}_${++this.seq}`;
-    const product = d.product ?? (d.productFor ? this.offerProduct(d.type, people, d.productFor.initiatorId) : null);
+    const offer: ProductOffer | null = d.product
+      ? {
+        product: d.product, angle: d.productAngle ?? '', hook: d.productHook, speaker: d.productSpeaker, angleKey: d.productAngleKey,
+        mode: d.productMode ?? (d.type === 'showroom_chat' ? 'showroom' : 'mention'), buys: d.productBuys ?? 0,
+      }
+      : d.productFor ? this.offerProduct(d.type, people, d.productFor.initiatorId) : null;
+    const product = offer?.product ?? null;
     // v3: 1/3 số lần tám chuyện / ăn trưa có một tin thật len vào — đi đường thẻ tin (req.news) để prompt có LUẬT TIN THẬT,
     // sanitize có lưới an toàn, người xem thấy thẻ tin + nguồn; cũng theo nhịp NEWS_SCENE_MIN_MINUTES (nửa nhịp sau news_chat)
     if (!d.news && (d.type === 'pantry_chat' || d.type === 'lunch') && this.newsEnabled && chance(1 / 3)
@@ -1248,10 +1360,21 @@ export class Director implements DirectorApi {
     if (rumor) req.rumor = { id: rumor.id, aboutId: rumor.aboutId, currentText: rumor.currentText, isNew: rumor.isNew };
     if (d.news) req.news = d.news;
     if (d.hrDossier) req.hrDossier = d.hrDossier;
-    if (product) {
+    if (d.crisis) req.crisis = { ...d.crisis, centerId: d.crisis.centerId && ids.includes(d.crisis.centerId) ? d.crisis.centerId : undefined };
+    if (product && offer) {
       const marketer = people.find((p) => p.role === 'marketing');
-      const speaker = d.productSpeaker && ids.includes(d.productSpeaker) ? d.productSpeaker : marketer?.id ?? d.productFor?.initiatorId;
-      req.product = { id: product.id, name: product.name, pitch: d.productPitch ?? product.pitch, preferSpeaker: speaker };
+      const speaker = offer.speaker && ids.includes(offer.speaker) ? offer.speaker
+        : d.productSpeaker && ids.includes(d.productSpeaker) ? d.productSpeaker : marketer?.id ?? d.productFor?.initiatorId;
+      req.product = {
+        id: product.id, name: product.name, pitch: d.productPitch ?? product.pitch, preferSpeaker: speaker,
+        short: shortNameOf(product), mode: offer.mode,
+        ...(product.spoken ? { spoken: product.spoken } : {}),
+        ...(product.facts ? { facts: product.facts } : {}),
+        ...(product.avoid ? { avoid: product.avoid } : {}),
+        ...(offer.angle ? { angle: offer.angle } : {}),
+        ...(offer.hook ? { hook: offer.hook } : {}),
+        ...(priceFeelOf(product) ? { priceFeel: priceFeelOf(product) } : {}),
+      };
     }
     const scene: Scene = {
       id: sid, type: d.type, def, channel, prio,
@@ -1259,7 +1382,7 @@ export class Director implements DirectorApi {
       participants: ids, aboutId: d.aboutId, locationLabel: label, targets, req, via,
       phase: 'gathering', createdAt: this.clockMs, startedAt: 0, result: null, failed: false,
       lineIdx: 0, nextAt: 0, started: false, ended: false, teleported: false,
-      product, productShown: false,
+      product, productShown: false, offer,
       rumor: rumor ? { id: rumor.id, aboutId: rumor.aboutId, isNew: rumor.isNew, tellerId: rumor.tellerId } : undefined,
       meta: d.meta ?? {}, allowAbsent: new Set(d.allowAbsent ?? []),
       news: d.news ? newsRefOf(d.news) : undefined,
@@ -1466,6 +1589,7 @@ export class Director implements DirectorApi {
         this.lastProductAt = this.clockMs;
         this.recentProducts = [...this.recentProducts.filter((x) => x !== s.product!.id), s.product.id].slice(-8);
         this.counters.products++;
+        this.afterProductLine(s, a.id);
       }
     }
     w.log(
@@ -1735,36 +1859,63 @@ export class Director implements DirectorApi {
     return !!this.nudge && g.people.some((p) => this.nudge!.ids.includes(p.id));
   }
 
-  /** món trên kệ đang đứng (né món vừa nhắc); kệ trống → kệ kia → bất kỳ; không có sản phẩm nào → null */
-  private showroomProduct(shelf: ProductShelf): Product | null {
-    try {
-      const recent = new Set(this.recentProducts);
-      const other: ProductShelf = shelf === 'beauty' ? 'tech' : 'beauty';
-      return pickShelfProduct(shelf, recent) ?? pickShelfProduct(other, recent) ?? pickProduct(['van-phong'], recent) ?? pickProduct([]);
-    } catch (e) {
-      this.err('pickShelfProduct', e);
-      return null;
+  /**
+   * v4: món + kiểu chuyện cho cảnh ở phòng trưng bày. Ai trong nhóm đã có món trên kệ thì hay kể lại (đã mua thấy ổn…);
+   * đang có "vụ mua sắm" thì ưu tiên món hợp vụ; còn lại xoay vòng món ít được nhắc. Không có sản phẩm nào → null.
+   */
+  private showroomOffer(shelf: ProductShelf, people: AgentState[], rec: AgentState): ProductOffer | null {
+    let all: Product[] = [];
+    try { all = getProducts(); } catch (e) { this.err('getProducts', e); return null; }
+    if (!all.length) return null;
+    const onShelf = all.filter((p) => p.shelf === shelf);
+    const list = onShelf.length ? onShelf : all;
+    const recent = new Set(this.recentProducts);
+    const mine = people.flatMap((x) => this.ownedBy(x.id).map((id) => ({ x, id })))
+      .filter((o) => list.some((p) => p.id === o.id) && !recent.has(o.id));
+    if (mine.length && chance(0.6)) {
+      const o = pick(mine)!;
+      const p = getProduct(o.id);
+      // người có món luôn là người kể (dShowroom chọn mode 'owner' theo đúng người kể)
+      if (p) return this.makeOffer(p, people, { owner: o.x, speakerId: o.x.id, mode: 'showroom' });
     }
+    const theme = this.activeTheme();
+    const themeTags = theme ? new Set(theme.def.tags) : null;
+    const fresh = list.filter((p) => !recent.has(p.id));
+    const pool = (fresh.length ? fresh : list).map((p) => {
+      const th = themeTags ? (themeTags.size ? contextScore(p, themeTags) : 1) : 0;
+      return { p, th, w: (th > 0 ? 3 * th : 0) + 1 / (1 + (this.productUses[p.id] ?? 0) * 0.5) };
+    });
+    const c = weightedPick(pool, (x) => x.w);
+    if (!c) return null;
+    // người khoe lỡ đã có món này → chỉ chọn kiểu chuyện của người đã có (không "chưa mua, đang tính rinh về")
+    const recOwns = this.owns(rec.id, c.p.id);
+    return this.makeOffer(c.p, people, { owner: recOwns ? rec : undefined, speakerId: rec.id, mode: 'showroom', theme: c.th > 0 && !recOwns ? theme : null });
   }
 
   private dShowroom(g: ShowroomGroup, nudged: boolean): Draft | null {
-    const product = this.showroomProduct(g.shelf);
-    if (!product) return null; // chưa có sản phẩm nào trong data/products.json → không có gì để khoe
-    const rec = pickRecommender(g.people, g.shelf);
+    const rec0 = pickRecommender(g.people, g.shelf);
+    const offer = this.showroomOffer(g.shelf, g.people, rec0);
+    if (!offer) return null; // chưa có sản phẩm nào trong data/products.json → không có gì để khoe
+    const product = offer.product;
+    const rec = g.people.find((p) => p.id === offer.speaker) ?? rec0;
     const ids = [rec.id, ...g.people.filter((p) => p.id !== rec.id).map((p) => p.id)];
     const place: Record<string, Placement> = {};
     for (const id of ids) place[id] = { how: 'stay' }; // đã đứng sẵn trước kệ (giữ nguyên chỗ đang giữ)
-    const note = (product.note ?? '').trim() || product.pitch;
     return {
       type: 'showroom_chat',
       participants: ids,
       place,
       locationLabel: SPOT_LABELS[SHELF_SPOT[g.shelf]] ?? 'Phòng trưng bày',
-      sit: (people) => sitShowroom(this.kit(), people, g.shelf, { name: product.name, note, emoji: product.emoji }, rec, nudged),
+      sit: (people) => sitShowroom(this.kit(), people, g.shelf, { name: product.name, short: shortNameOf(product), emoji: product.emoji, angle: offer.angle }, rec, nudged),
       topicCats: [],
       product,
-      productPitch: note,
       productSpeaker: rec.id,
+      productAngle: offer.angle,
+      productHook: offer.hook,
+      // người khoe đã có món này → kể như người đã dùng (prompt "MÓN ĐỒ … ĐÃ CÓ", offline SR_PRODUCT); chưa có → "MÓN TRÊN KỆ"
+      productMode: this.owns(rec.id, product.id) ? 'owner' : 'showroom',
+      productAngleKey: offer.angleKey,
+      productBuys: offer.buys,
       meta: { label: g.shelf },
       labels: { [rec.id]: { label: 'đang khoe đồ trên kệ', emote: '🛍️' } },
       minPeople: 2,
@@ -1851,7 +2002,8 @@ export class Director implements DirectorApi {
       sit: () => sitDeskVisit(this.kit(), i, t, m, act, tone ? undefined : why, tone),
       topicCats: tone ? [] : m.topics,
       productFor: i.role === 'marketing' && !tone ? { initiatorId: i.id } : undefined,
-      title: tone === 'tense' ? `${i.name} và ${t.name} lời qua tiếng lại` : tone === 'makeup' ? `${i.name} làm hoà với ${t.name}` : `${i.name} ghé bàn ${t.name}`,
+      title: tone === 'tense' ? `${i.name} và ${t.name} lời qua tiếng lại` : tone === 'makeup' ? `${i.name} làm hoà với ${t.name}`
+        : tone === 'support' ? `${i.name} hỏi han ${t.name}` : `${i.name} ghé bàn ${t.name}`,
       icon: tone === 'tense' ? '😠' : tone === 'makeup' ? '🤝' : undefined,
     };
   }
@@ -2444,6 +2596,7 @@ export class Director implements DirectorApi {
     w.setIncident(null);
     if (cur === 'server_down') {
       this.logEvent('✅', 'Server đã chạy lại, cả team thở phào', 'event', true);
+      if (!this.theme && chance(0.6)) this.startTheme(themeByKey('backup_scare'));
       for (const a of w.agents()) {
         if (a.activity === 'server_fix' && !a.sceneId && a.status === 'active') {
           this.safeRelease(a.id);
@@ -2633,6 +2786,9 @@ export class Director implements DirectorApi {
       case 'raise_request': this.afterRaise(s, res); break;
       case 'promotion': this.afterPromotion(s); break;
       case 'layoff': this.afterLayoff(s); break;
+      // ---- v5
+      case 'crisis_meeting': this.afterCrisisMeeting(s, res); break;
+      case 'pep_talk': this.afterPepTalk(s, res); break;
       default: break;
     }
   }
@@ -3508,6 +3664,173 @@ export class Director implements DirectorApi {
     };
   }
 
+  // ================================================================ v5 — tình huống công ty: họp xử lý, công tác tư tưởng
+  /** có mặt, đang làm, rảnh cho cảnh mức `prio` */
+  private avail(a: AgentState | undefined, prio: Priority = 'high'): a is AgentState {
+    return !!a && a.status === 'active' && a.present && !a.hidden && this.free(a, prio);
+  }
+
+  /**
+   * crisis_meeting: chủ trì = sếp (có mặt, không đi vắng), không thì HR; thêm ≤ 3 người theo vai của tình huống
+   * (+ người trong cuộc nếu tình huống cần). Phương án đưa ra bàn = plansFor(tình hình); chọn sẵn 1 phương án dự phòng.
+   */
+  private dCrisisMeeting(q: QItem): Draft | null | 'drop' {
+    const w = this.world;
+    const arc = this.story.arcById(q.data.arcId);
+    const def = arc ? situationDef(arc.kind) : undefined;
+    if (!arc || !def || arc.plan || arc.status === 'resolved' || arc.status === 'dropped') return 'drop';
+    const boss = w.boss();
+    const hr = w.hr();
+    const chair = this.avail(boss) && !w.bossAway() ? boss : this.avail(hr) ? hr : undefined;
+    if (!chair) return null;
+    const center = def.meeting.withCenter && arc.a ? w.agent(arc.a) : undefined;
+    if (center && !this.avail(center)) return null;
+    const members: AgentState[] = [];
+    for (const role of def.meeting.roles) {
+      if (members.length >= 3) break;
+      // người trong cuộc (bị câu, gặp chuyện riêng, hai phe…) không ngồi họp bàn về chính mình — trừ khi tình huống gọi vào (center)
+      const m = w.activeAgents().find((x) => x.role === role && x.id !== chair.id && x.id !== center?.id && x.id !== arc.a && x.id !== arc.b
+        && !members.includes(x) && this.avail(x));
+      if (m) members.push(m);
+    }
+    if (!members.length && !center) return null;
+    const A = arc.a ? w.agent(arc.a) : undefined;
+    const B = arc.b ? w.agent(arc.b) : undefined;
+    const fill = (t: string) => fillSit(t, { a: A?.name, b: B?.name, boss: boss?.name });
+    const plans = plansFor(def, sitWorldOf(w));
+    const pk = this.story.pickPlan(def, w);
+    const ids = [chair.id, ...members.map((m) => m.id), ...(center ? [center.id] : [])];
+    const place: Record<string, Placement> = {};
+    for (const id of ids) place[id] = { how: 'spot', group: 'meeting' };
+    const topic = fill(def.meeting.topic);
+    return {
+      type: 'crisis_meeting',
+      participants: ids,
+      place,
+      locationLabel: SPOT_LABELS.meeting,
+      sit: (people) => sitCrisisMeeting(this.kit(), chair, people.filter((p) => p.id !== chair.id && p.id !== center?.id),
+        center && people.some((p) => p.id === center.id) ? center : null, { title: def.title, note: fill(arc.note), topic }),
+      topicCats: [],
+      meta: { arcId: arc.id, pick: pk.code, options: plans.map((p) => p.code).join(',') },
+      crisis: {
+        kind: def.kind, title: def.title, note: cut(fill(arc.note), 160), topic,
+        options: plans.map((p) => ({ code: p.code, label: cut(fill(p.label), 100) })), pick: pk.code, centerId: center?.id,
+      },
+      labels: Object.fromEntries(ids.map((id) => [id, { label: 'đang họp xử lý tình huống', emote: '🧯' }])),
+      title: `Họp xử lý: ${def.title}`,
+      icon: '🧯',
+      minPeople: 2,
+    };
+  }
+
+  /** pep_talk: all = sếp (vắng thì HR) + ≤ 4 người đang buồn nhất; one = nói riêng; mediate = HR (không có thì sếp) ngồi giữa hai người */
+  private dPepTalk(q: QItem): Draft | null | 'drop' {
+    const w = this.world;
+    const d = q.data;
+    const arc = this.story.arcById(d.arcId);
+    const def = arc ? situationDef(arc.kind) : undefined;
+    if (!arc || !def || arc.status === 'resolved' || arc.status === 'dropped') return 'drop';
+    const variant: 'all' | 'one' | 'mediate' = d.variant === 'one' || d.variant === 'mediate' ? d.variant : 'all';
+    const boss = w.boss();
+    const hr = w.hr();
+    const bossOk = this.avail(boss, 'normal') && !w.bossAway();
+    const hrOk = this.avail(hr, 'normal');
+    const speaker = variant === 'mediate' ? (hrOk ? hr : bossOk ? boss : undefined) : (bossOk ? boss : hrOk ? hr : undefined);
+    if (!speaker) return null;
+    let audience: AgentState[];
+    let a: AgentState | undefined, b: AgentState | undefined;
+    if (variant === 'mediate') {
+      a = d.aId ? w.agent(d.aId) : undefined;
+      b = d.bId ? w.agent(d.bId) : undefined;
+      if (!a || !b || a.status !== 'active' || b.status !== 'active') return 'drop';
+      if (!this.avail(a, 'normal') || !this.avail(b, 'normal') || a.id === speaker.id || b.id === speaker.id) return null;
+      audience = [a, b];
+    } else if (variant === 'one') {
+      const t = d.targetId ? w.agent(d.targetId) : undefined;
+      if (!t || t.status !== 'active') return 'drop';
+      if (!this.avail(t, 'normal') || t.id === speaker.id) return null;
+      audience = [t];
+    } else {
+      audience = w.activeAgents().filter((x) => x.id !== speaker.id && x.role !== 'boss' && this.avail(x, 'normal'))
+        .sort((x, y) => fin(x.mood, 60) - fin(y.mood, 60)).slice(0, 4);
+      if (audience.length < 2) return null;
+    }
+    // lựa chọn dự phòng: tâm trạng, thiện cảm với người nói, độ "kỳ phùng" của hai phe
+    const avgMood = audience.reduce((s, x) => s + fin(x.mood, 60), 0) / audience.length;
+    const avgRel = audience.reduce((s, x) => s + relScore(x, speaker.id), 0) / audience.length;
+    let p = 0.5 + avgRel / 120 + (avgMood - 55) / 150;
+    if (variant === 'mediate' && a && b) p += mutual(a, b) / 100;
+    const pick: 'inspired' | 'unmoved' = chance(clamp(p, 0.15, 0.85)) ? 'inspired' : 'unmoved';
+    const A = arc.a ? w.agent(arc.a) : undefined;
+    const B = arc.b ? w.agent(arc.b) : undefined;
+    const fill = (t: string) => fillSit(t, { a: A?.name, b: B?.name, boss: boss?.name });
+    const topic = cut(d.note || fill(def.meeting.topic), 120);
+    const ids = [speaker.id, ...audience.map((x) => x.id)];
+    const inBossRoom = variant === 'one' && speaker.role === 'boss';
+    const place: Record<string, Placement> = {};
+    if (inBossRoom) {
+      place[speaker.id] = { how: 'seat' };
+      place[audience[0].id] = { how: 'spot', group: 'boss_visit' };
+    } else for (const id of ids) place[id] = { how: 'spot', group: 'meeting' };
+    return {
+      type: 'pep_talk',
+      participants: ids,
+      place,
+      locationLabel: inBossRoom ? SPOT_LABELS.boss_visit : SPOT_LABELS.meeting,
+      sit: (people) => sitPepTalk(this.kit(), speaker, people.filter((x) => x.id !== speaker.id), { variant, note: fill(arc.note), topic, a, b }),
+      topicCats: [],
+      meta: { arcId: arc.id, pick, variant, targetId: variant === 'one' ? audience[0].id : undefined },
+      crisis: { kind: def.kind, title: def.title, note: cut(fill(arc.note), 160), topic, pick, variant, centerId: variant === 'one' ? audience[0].id : undefined },
+      labels: Object.fromEntries(ids.map((id) => [id, { label: id === speaker.id ? 'đang làm công tác tư tưởng' : 'đang nghe truyền lửa', emote: '📣' }])),
+      title: variant === 'mediate' ? `${speaker.name} hoà giải ${a?.name ?? ''} và ${b?.name ?? ''}`.trim()
+        : variant === 'one' ? `${speaker.name} nói chuyện riêng với ${audience[0].name}` : `${speaker.name} truyền lửa cho cả phòng`,
+      icon: '📣',
+      // hoà giải phải đủ cả hai phía
+      minPeople: variant === 'mediate' ? 3 : 2,
+    };
+  }
+
+  /** sau cuộc họp: ghi phương án (AI chốt nếu mã hợp lệ, không thì lựa chọn dự phòng), nhật ký, hiệu ứng ngay khi chốt */
+  private afterCrisisMeeting(s: Scene, res: SceneResult | null): void {
+    const w = this.world;
+    const arc = this.story.arcById(s.meta.arcId);
+    const def = arc ? situationDef(arc.kind) : undefined;
+    if (!arc || !def || arc.plan) return;
+    const offered = (s.meta.options ?? '').split(',').filter(Boolean);
+    const v = res?.verdict ?? null;
+    const aiOk = !!v && offered.includes(v) && res?.source === 'llm';
+    const code = (aiOk ? v : offered.includes(s.meta.pick ?? '') ? s.meta.pick : offered[0]) as PlanCode | undefined;
+    if (!code || !this.story.setPlan(arc.id, code, aiOk ? 'llm' : 'offline')) return;
+    const plan = def.plans.find((p) => p.code === code);
+    if (!plan) return;
+    const A = arc.a ? w.agent(arc.a) : undefined;
+    const B = arc.b ? w.agent(arc.b) : undefined;
+    const label = fillSit(plan.label, { a: A?.name, b: B?.name, boss: w.boss()?.name });
+    const chair = w.agent(s.participants[0])?.name ?? 'Sếp';
+    // ngắn gọn: thẻ cảnh ngay trên đã có tên tình huống
+    this.logEvent('🧯', cut(`${chair} chốt: ${label}`, 120), 'event', true);
+    for (const act of this.story.planNowActions(arc, w)) {
+      try { this.runAction(act, arc); } catch (e) { this.err(`plan:${act.t}`, e); }
+    }
+    this.archive('beat', `🧯 ${def.title}: chốt ${cut(label, 80)}`, { id: arc.id, kind: arc.kind, plan: code, by: aiOk ? 'llm' : 'offline' });
+  }
+
+  /** sau công tác tư tưởng: ghi kết quả vào mạch; cả phòng không xuôi → nhóm kín chế lại bài nói */
+  private afterPepTalk(s: Scene, res: SceneResult | null): void {
+    // chỉ tin verdict của AI; offline (kể cả cảnh khẩn cấp dùng verdict mặc định) đi theo lựa chọn của Director
+    const v = res?.source === 'llm' && (res.verdict === 'inspired' || res.verdict === 'unmoved') ? res.verdict
+      : s.meta.pick === 'unmoved' ? 'unmoved' : 'inspired';
+    this.story.setPep(s.meta.arcId, v);
+    if (v === 'unmoved' && s.meta.variant !== 'mediate' && s.meta.variant !== 'one' && chance(0.6)) {
+      const speaker = this.world.agent(s.participants[0]);
+      const now = this.now();
+      this.enqueue('group_chat', now + rand(10, 30), now + 90, 'low', {
+        reason: 'situation', note: `Nhóm kín (không có ${speaker?.name ?? 'sếp'}) chế lại bài "truyền lửa" vừa rồi: trích câu hay nhất, thả meme, có người bênh`,
+        exclude: s.participants[0], arcId: s.meta.arcId,
+      });
+    }
+  }
+
   private afterResignTalk(s: Scene, res: SceneResult | null): void {
     const w = this.world;
     const emp = s.meta.targetId ? w.agent(s.meta.targetId) : undefined;
@@ -3608,6 +3931,7 @@ export class Director implements DirectorApi {
       latestNews: this.discussedNews[this.discussedNews.length - 1],
       recentEvents: this.notable.slice(-3),
       headcount: this.headcount(),
+      ownedBy: (id) => this.ownedBy(id),
     };
   }
 
@@ -3661,7 +3985,8 @@ export class Director implements DirectorApi {
   private acceptPlan(plan: BeatPlan, ctx: StoryContext): void {
     const arcs = this.story.accept(plan, ctx);
     // 🎬 hiếm: chỉ mạch "đậm" (intensity 3), ≤ 1 dòng mỗi lần lên beat và ≤ 2 dòng/ngày — đọc như tiêu đề chương, không như kỹ thuật
-    const loud = arcs.find((a) => a.intensity >= 3);
+    // v5: tình huống công ty đã có dòng "bùng phát" riêng (cùng nội dung) → không in thêm dòng 🎬 trùng
+    const loud = arcs.find((a) => a.intensity >= 3 && !isSituation(a.kind));
     if (loud && this.clapsToday < 2) {
       this.clapsToday++;
       const text = loud.note.charAt(0).toUpperCase() + loud.note.slice(1);
@@ -3675,6 +4000,13 @@ export class Director implements DirectorApi {
     const w = this.world;
     const now = this.now();
     const min = w.minuteOfDay();
+    // v5: cuộc họp / buổi truyền lửa của chính mạch còn chờ trong hàng hoặc đang diễn → đợi nó xong rồi mới tính bước kế
+    // (phương án dự phòng không "chốt nhanh" giữa lúc họp, kết cục không công bố trước bài nói). Hàng đợi có hạn (until,
+    // dọn cuối ngày) và cảnh nào cũng kết thúc nên không kẹt mãi.
+    if (isSituation(arc.kind) && this.arcSceneLive(arc.id)) {
+      this.story.hold(arc, now, 10);
+      return;
+    }
     const ctx = this.storyCtx();
     let actions: StoryAction[] | null;
     try {
@@ -3687,9 +4019,17 @@ export class Director implements DirectorApi {
       this.story.drop(arc, w.day());
       return;
     }
+    // v5: bước chưa chạy được (chờ cuộc họp chốt phương án) → hoãn, không tính bước
+    const wait = actions.find((a): a is Extract<StoryAction, { t: 'wait' }> => a.t === 'wait');
+    if (wait) {
+      this.story.postpone(arc, now, wait.minutes);
+      return;
+    }
     const last = arc.step >= arc.total - 1;
-    // cổng xác suất: bước giữa có thể "không xảy ra" cho khỏi gượng; bước kết luôn chạy
-    if (!last && !chance(0.88)) {
+    // cổng xác suất: bước giữa có thể "không xảy ra" cho khỏi gượng; bước kết luôn chạy.
+    // v5: tình huống công ty không bỏ bước (cuộc họp và triển khai là xương sống của mạch); bước ghi sổ đồ ("vừa mua"
+    // của shopping_story) cũng không bỏ — bước sau coi người đó là chủ món
+    if (!last && !isSituation(arc.kind) && !actions.some((a) => a.t === 'own') && !chance(0.88)) {
       this.story.advance(arc, now, min);
       return;
     }
@@ -3704,6 +4044,13 @@ export class Director implements DirectorApi {
     if (arc.status === 'resolved') {
       this.archive('beat', `🎬 kết: ${arc.kind} — ${arcSummary(arc, w)}`, { id: arc.id, kind: arc.kind, steps: arc.step });
     }
+  }
+
+  /** v5: cảnh họp xử lý / truyền lửa của mạch này đang diễn hoặc còn chờ trong hàng đợi */
+  private arcSceneLive(arcId: string): boolean {
+    const mine = (type: SceneType, id: string | undefined) => (type === 'crisis_meeting' || type === 'pep_talk') && id === arcId;
+    return [this.office, this.online].some((s) => !!s && !s.ended && mine(s.type, s.meta.arcId))
+      || this.queue.some((q) => mine(q.type, q.data.arcId));
   }
 
   private runAction(act: StoryAction, arc: Arc): void {
@@ -3721,6 +4068,10 @@ export class Director implements DirectorApi {
       case 'adjust': w.adjust(act.id, { mood: act.mood, stress: act.stress, kpi: act.kpi, energy: act.energy }); break;
       case 'rel': w.changeRelationship(act.from, act.to, act.delta, act.note); break;
       case 'memory': w.addMemory(act.id, act.text); break;
+      case 'own':
+        // đã có rồi (vd vừa được giao / được tặng đúng món đó) → không ghi lại, không thay món trên bàn
+        if (w.agent(act.id)?.status === 'active' && !this.owns(act.id, act.productId)) { this.addOwned(act.id, act.productId); w.setDeskItem(act.id, act.productId); }
+        break;
       case 'log':
         if (act.kind === 'system') w.log({ kind: 'system', icon: act.icon, text: act.text });
         else this.logEvent(act.icon, act.text, 'event', true);
@@ -3777,6 +4128,11 @@ export class Director implements DirectorApi {
         this.enqueue('gossip', now + rand(2, 12), now + 60, 'normal', { aboutId: act.about, note: act.text, exclude: act.exclude.join(','), arcId: arc.id });
         break;
       case 'boost': this.setBoost(act.reason, act.data, act.minutes); break;
+      // v5: kết cục xấu của "thị trường khó" → HR + sếp xét nhân sự (AI quyết, hàng rào như thường)
+      case 'hr_review':
+        if (!this.queued('hr_review')) this.enqueue('hr_review', now + rand(15, 45), now + 180, 'high', { note: act.note, arcId: arc.id });
+        break;
+      case 'wait': break;
       default: break;
     }
   }
@@ -3800,11 +4156,14 @@ export class Director implements DirectorApi {
       if (day > this.overtime.untilDay) this.overtime = null;
       else this.applyOvertime();
     }
-    const late = Object.entries(this.lateTomorrow);
-    this.lateTomorrow = {};
-    for (const [id, m] of late) {
-      const a = w.agent(id);
-      if (a && a.status === 'active' && !a.present) a.arriveAt = Math.round(clamp(fin(a.arriveAt, 480) + m, 7 * 60, 10 * 60 + 30));
+    // tới trễ sau karaoke: để dành tới ngày văn phòng mở cửa (karaoke tối thứ Sáu → thứ Hai đi trễ, không "tiêu" vào thứ Bảy)
+    if (!w.officeClosed?.()) {
+      const late = Object.entries(this.lateTomorrow);
+      this.lateTomorrow = {};
+      for (const [id, m] of late) {
+        const a = w.agent(id);
+        if (a && a.status === 'active' && !a.present) a.arriveAt = Math.round(clamp(fin(a.arriveAt, 480) + m, 7 * 60, 10 * 60 + 30));
+      }
     }
     const keep: typeof this.driftPlans = [];
     for (const p of this.driftPlans) {
@@ -3869,39 +4228,297 @@ export class Director implements DirectorApi {
     w.addMemory(a.id, ev.memory);
   }
 
-  // ================================================================ sản phẩm affiliate
-  private offerProduct(type: SceneType, people: AgentState[], initiatorId?: string): Product | null {
+  // ================================================================ sản phẩm affiliate (v4: có "chuyện", không chèn ngang)
+  private offerProduct(type: SceneType, people: AgentState[], initiatorId?: string): ProductOffer | null {
     const initiator = initiatorId ? people.find((p) => p.id === initiatorId) : undefined;
     const eligible = SCENE_DEFS[type].product || (type === 'desk_visit' && initiator?.role === 'marketing');
     if (!eligible || this.productLock) return null;
     if (this.clockMs - this.lastProductAt < this.productMinMs()) return null;
-    const boosted = this.now() < this.productBoostUntil;
-    if (Math.random() >= (boosted ? 0.85 : 0.5)) return null;
-    try {
-      return pickProduct(this.productTags(type, people), new Set(this.recentProducts));
-    } catch (e) {
-      this.err('pickProduct', e);
-      return null;
+    const theme = this.activeTheme();
+    const boosted = this.now() < this.productBoostUntil || !!theme;
+    if (Math.random() >= (boosted ? 0.8 : 0.5)) return null;
+    return this.chooseProduct(people, new Set(this.productTags(type, people)), theme, initiator?.id);
+  }
+
+  /**
+   * Chọn món có CỚ để xuất hiện: khớp ngữ cảnh cảnh (mệt, ăn trưa, ngủ trưa, nắng chiều…), hợp "vụ mua sắm" đang chạy,
+   * hoặc có người trong cảnh đã sở hữu (để kể lại). Không món nào có cớ → không nhắc (null). Món ít được nhắc được ưu tiên.
+   */
+  /** skip: món không được chọn (vd quà cho người đã có món đó) */
+  private chooseProduct(people: AgentState[], ctx: ReadonlySet<string>, theme: { def: ShoppingTheme } | null, speakerId?: string,
+    skip?: ReadonlySet<string>, ignoreRecent = false): ProductOffer | null {
+    let list: Product[] = [];
+    try { list = getProducts(); } catch (e) { this.err('getProducts', e); return null; }
+    const recent = new Set(ignoreRecent ? [] : this.recentProducts);
+    const themeTags = theme ? new Set(theme.def.tags) : null;
+    const scored: { p: Product; w: number; th: number; owner: AgentState | null }[] = [];
+    for (const p of list) {
+      if (recent.has(p.id) || skip?.has(p.id)) continue;
+      const c = contextScore(p, ctx);
+      const th = themeTags ? (themeTags.size ? contextScore(p, themeTags) : 1) : 0;
+      const owners = people.filter((x) => this.owns(x.id, p.id));
+      if (!c && !th && !owners.length) continue; // không có cớ → không nhắc món này
+      const w = (c + th * 2 + (owners.length ? 2 : 0)) / (1 + (this.productUses[p.id] ?? 0) * 0.35);
+      scored.push({ p, w, th, owner: owners.length ? pick(owners)! : null });
     }
+    const c = weightedPick(scored, (x) => x.w);
+    if (!c) return null;
+    return this.makeOffer(c.p, people, { owner: c.owner ?? undefined, speakerId, mode: 'mention', theme: c.th > 0 ? theme : null });
+  }
+
+  /** Ghép món + kiểu chuyện: hợp vụ đang chạy → lấy vụ làm cớ; có người đã sở hữu → kể lại; còn lại → kiểu chuyện xoay vòng */
+  private makeOffer(
+    p: Product, people: AgentState[],
+    o: { owner?: AgentState; speakerId?: string; mode: ProductMode; theme?: { def: ShoppingTheme } | null },
+  ): ProductOffer {
+    const nonBoss = people.filter((x) => x.role !== 'boss');
+    const hook = pick(p.hooks ?? []) ?? '';
+    if (o.theme && !o.owner && chance(0.7)) {
+      const speaker = people.find((x) => x.id === o.speakerId) ?? (o.theme.def.by === 'marketing' ? people.find((x) => x.role === 'marketing') : undefined) ?? pick(nonBoss) ?? people[0];
+      return {
+        product: p, mode: o.mode, speaker: speaker?.id, hook: o.theme.def.hook, angleKey: `theme:${o.theme.def.key}`, buys: 0.6,
+        angle: `${this.themeText(o.theme.def.angle)}; món này hợp vụ (${o.theme.def.hook})`,
+      };
+    }
+    const owner = o.owner && people.some((x) => x.id === o.owner!.id) ? o.owner : undefined;
+    const feel = priceFeelOf(p);
+    const recentKeys = new Set(this.recentAngles.slice(-5));
+    const fits = (a: ProductAngle) => (owner ? a.need !== 'new' : a.need !== 'owner') && (!a.feel || (!!feel && a.feel.includes(feel)));
+    let pool = PRODUCT_ANGLES.filter((a) => fits(a) && !recentKeys.has(a.key));
+    if (!pool.length) pool = PRODUCT_ANGLES.filter(fits);
+    const ang = weightedPick(pool, (a) => a.weight * (owner && a.need === 'owner' ? 1.6 : 1)) ?? PRODUCT_ANGLES[0];
+    const speaker = (ang.need === 'owner' && owner) ? owner
+      : people.find((x) => x.id === o.speakerId) ?? pick(nonBoss) ?? people[0];
+    const other = pick(people.filter((x) => x.id !== speaker?.id));
+    let angle = fillAngle(ang.text, { owner: owner?.name, speaker: speaker?.name, other: other?.name });
+    if (ang.key === 'need_first' && hook) angle += ` (rắc rối gợi ý: ${hook})`;
+    return {
+      product: p, mode: owner && ang.need === 'owner' ? (o.mode === 'showroom' ? 'showroom' : 'owner') : o.mode,
+      speaker: speaker?.id, hook, angle, angleKey: ang.key, buys: ang.buys ?? 0,
+    };
+  }
+
+  /** thay {boss} {hr} {mkt} bằng tên người đang giữ vai đó */
+  private themeText(t: string): string {
+    const w = this.world;
+    const mkt = w.activeAgents().find((a) => a.role === 'marketing');
+    return t
+      .replace(/\{boss\}/g, w.boss()?.name ?? 'Sếp')
+      .replace(/\{hr\}/g, w.hr()?.name ?? 'HR')
+      .replace(/\{mkt\}/g, mkt?.name ?? 'bên marketing');
+  }
+
+  /** món đi kèm cảnh khui hộp / tặng quà / chuyện mua sắm của AI biên kịch */
+  private attachProduct(draft: Draft, productId: string, mode: ProductMode, angle: string | undefined, initiator: AgentState, target: AgentState): void {
+    let p: Product | undefined;
+    try { p = getProduct(productId); } catch { p = undefined; }
+    if (!p) return;
+    const short = shortNameOf(p);
+    draft.product = p;
+    draft.productMode = mode;
+    draft.productSpeaker = mode === 'gift' || mode === 'mention' ? initiator.id : target.id;
+    draft.productHook = pick(p.hooks ?? []) ?? '';
+    // khui hộp / tặng quà: mục tiêu cảnh (sitDeskVisit tone unbox / gift) đã tả đúng chuyện này → không thêm "Chuyện" trùng lặp
+    draft.productAngle = angle && angle.trim() ? cut(angle, 220)
+      : mode === 'owner' ? `${target.name} đã dùng ${short} một thời gian, ${initiator.name} ghé hỏi thật lòng có đáng mua không`
+        : '';
+    if (mode === 'unboxing') { draft.title = `${target.name} khui hàng mới`; draft.icon = '📦'; }
+    else if (mode === 'gift') { draft.title = `${initiator.name} tặng quà ${target.name}`; draft.icon = '🎁'; }
+  }
+
+  /** câu nhắc sản phẩm vừa lên sóng: đếm lượt, nhớ kiểu chuyện, đôi khi người nói chốt đơn → vài giờ sau "hàng về" */
+  private afterProductLine(s: Scene, speakerId: string): void {
+    const p = s.product;
+    if (!p) return;
+    this.productUses[p.id] = (this.productUses[p.id] ?? 0) + 1;
+    const o = s.offer;
+    if (o?.angleKey) this.recentAngles = [...this.recentAngles, o.angleKey].slice(-8);
+    if (!o || o.mode === 'unboxing' || o.mode === 'gift' || o.mode === 'owner') return;
+    const buyer = this.world.agent(speakerId);
+    if (!buyer || buyer.status !== 'active' || this.owns(buyer.id, p.id) || this.deliveriesToday >= 3) return;
+    if (!chance(o.buys)) return;
+    this.addTimer({ kind: 'delivery', at: this.now() + randInt(90, 300), agentId: buyer.id, productId: p.id, since: this.now() });
+  }
+
+  /** shipper giao hàng: thành món đồ trên bàn + cảnh đồng nghiệp xúm lại xem khui hộp */
+  private deliver(t: Timer): void {
+    const w = this.world;
+    const a = t.agentId ? w.agent(t.agentId) : undefined;
+    let p: Product | undefined;
+    try { p = t.productId ? getProduct(t.productId) : undefined; } catch { p = undefined; }
+    if (!a || a.status !== 'active' || !p || this.owns(a.id, p.id)) return;
+    if (!a.present || a.hidden) {
+      // chưa đi làm / đã về: hàng để ở lễ tân, nhận vào 09:30–11:00 buổi sáng kế tiếp (trước 9h thì ngay sáng nay); hụt tối đa
+      // 2 lần. Văn phòng đóng cửa (không ai đi làm: cuối tuần ở realtime) không tính là giao hụt; đơn quá 5 ngày thì thôi.
+      const closed = !w.activeAgents().some((x) => x.present && !x.hidden);
+      const tries = (t.tries ?? 0) + (closed ? 0 : 1);
+      const fresh = this.now() - (t.since ?? t.at) <= DELIVERY_MAX_AGE;
+      if (tries <= 2 && fresh) {
+        const dayStart = this.now() - w.minuteOfDay();
+        this.addTimer({ ...t, at: dayStart + (w.minuteOfDay() < 540 ? 0 : 1440) + randInt(570, 660), tries });
+      }
+      return;
+    }
+    const short = shortNameOf(p);
+    this.addOwned(a.id, p.id);
+    w.setDeskItem(a.id, p.id);
+    w.addMemory(a.id, `Nhận hàng ${short} giao tới văn phòng`);
+    this.deliveriesToday++;
+    this.logEvent('📦', `Shipper giao hàng tới cho ${a.name}: ${p.emoji} ${p.name}`, 'event', true);
+    const now = this.now();
+    this.enqueue('desk_visit', now + rand(1, 6), now + 60, 'low', { targetId: a.id, why: `xem ${a.name} khui hộp ${short}`, tone: 'unbox', productId: p.id, productMode: 'unboxing' });
+  }
+
+  private owns(agentId: string, productId: string): boolean {
+    if (this.world.agent(agentId)?.deskItemProductId === productId) return true;
+    return (this.owned[agentId] ?? []).some((o) => o.id === productId);
+  }
+
+  private ownedBy(agentId: string): string[] {
+    const ids = (this.owned[agentId] ?? []).map((o) => o.id);
+    const desk = this.world.agent(agentId)?.deskItemProductId;
+    return desk && !ids.includes(desk) ? [...ids, desk] : ids;
+  }
+
+  private addOwned(agentId: string, productId: string): void {
+    const list = (this.owned[agentId] ?? []).filter((o) => o.id !== productId);
+    // món đang trên bàn (preset roster / lúc tuyển) chưa có trong sổ → ghi trước khi bị thay (mọi nơi gọi addOwned rồi mới
+    // setDeskItem), kẻo "quên" là đã có rồi sau đó lại "mua" lần nữa
+    const desk = this.world.agent(agentId)?.deskItemProductId;
+    if (desk && desk !== productId && !list.some((o) => o.id === desk)) list.push({ id: desk, day: this.world.day() });
+    list.push({ id: productId, day: this.world.day() });
+    this.owned[agentId] = list.slice(-6);
+  }
+
+  // ---------------------------------------------------------------- v4: "vụ mua sắm"
+  private activeTheme(): { def: ShoppingTheme; state: ThemeState } | null {
+    const t = this.theme;
+    if (!t) return null;
+    if (this.now() >= t.until) { this.endTheme(t.key); return null; }
+    const def = themeByKey(t.key);
+    return def ? { def, state: t } : null;
+  }
+
+  private themeOk(t: ShoppingTheme): boolean {
+    const w = this.world;
+    if (t.when === 'afternoon' && w.minuteOfDay() < 780) return false;
+    if (t.when === 'friday' && !/sáu/i.test(w.weekday())) return false;
+    if (t.by === 'boss' && !w.boss()) return false;
+    if (t.by === 'hr' && !w.hr()) return false;
+    if (t.by === 'marketing' && (!w.boss() || !w.activeAgents().some((a) => a.role === 'marketing'))) return false;
+    return w.activeAgents().filter((a) => a.present && a.role !== 'boss').length >= 3;
+  }
+
+  /** bắt đầu một vụ (chỉ định sẵn hoặc bốc ngẫu nhiên, né 4 vụ gần nhất): thông báo + nhóm công ty + mời qua phòng trưng bày */
+  private startTheme(want?: ShoppingTheme): boolean {
+    if (this.theme) return false;
+    let def = want && this.themeOk(want) ? want : undefined;
+    if (!def && !want) {
+      const recent = new Set(this.recentThemes.slice(-4));
+      def = weightedPick(SHOPPING_THEMES.filter((t) => t.weight > 0 && !recent.has(t.key) && this.themeOk(t)), (t) => t.weight) ?? undefined;
+    }
+    if (!def) return false;
+    const now = this.now();
+    // kết trước 16:40 (còn người ở văn phòng để khui quà / trao giải); bắt đầu quá trễ (< 60 phút) thì thôi
+    const until = Math.min(now + randInt(def.minutes[0], def.minutes[1]), this.absFor(this.world.day(), 1000));
+    if (until - now < 60) return false;
+    const announce = this.themeText(def.announce);
+    this.theme = { key: def.key, startedAt: now, until, announce };
+    this.lastThemeDay = this.world.day();
+    this.recentThemes = [...this.recentThemes, def.key].slice(-6);
+    this.productBoostUntil = Math.max(this.productBoostUntil, until);
+    this.logEvent(def.icon, announce, 'event', true);
+    this.enqueue('company_chat', now + rand(1, 4), now + 40, 'normal', { reason: 'shopping', note: announce });
+    if (showroomAvailable()) this.enqueue('showroom_chat', now + rand(20, 60), now + 120, 'normal', { reason: 'nudge' });
+    this.addTimer({ kind: 'theme_end', at: until, themeKey: def.key });
+    return true;
+  }
+
+  /** kết vụ: bốc thăm quà → khui quà bí mật; thi góc làm việc → công bố người thắng */
+  private endTheme(key?: string): void {
+    const t = this.theme;
+    if (!t || (key && t.key !== key)) return;
+    this.theme = null;
+    const def = themeByKey(t.key);
+    if (!def?.payoff) return;
+    const w = this.world;
+    // quá giờ làm (vd server khởi động lại buổi tối, hẹn kết vụ đã trễ) → kết thúc lặng lẽ, không trao giải / khui quà
+    // cho vài người còn ở lại muộn
+    if (w.minuteOfDay() >= 17 * 60 + 30) return;
+    const here = w.activeAgents().filter((a) => a.present && !a.hidden && a.status === 'active' && a.role !== 'boss');
+    if (def.payoff === 'contest_winner') {
+      if (!here.length) return;
+      const win = weightedPick(here, (a) => 1 + this.ownedBy(a.id).length * 0.6) ?? here[0];
+      this.logEvent('🏆', `${win.name} thắng thi "góc làm việc đẹp nhất", được ${w.boss()?.name ?? 'sếp'} bao trà sữa cả tuần`, 'event', true);
+      w.adjust(win.id, { mood: 10 });
+      w.addMemory(win.id, 'Thắng thi góc làm việc đẹp nhất công ty');
+      return;
+    }
+    // gift_exchange: tối đa 2 cặp người tặng → người nhận, mỗi người nhận một món hợp vụ
+    const givers = shuffle([...here]);
+    const used = new Set<string>();
+    const given = new Set<string>();
+    let pairs = 0;
+    const tags = new Set(def.tags);
+    for (const g of givers) {
+      if (pairs >= 2) break;
+      // không tặng món người nhận đã có (kể cả món trên bàn) hay đang chờ giao, không tặng trùng món cặp trước; người này hết
+      // món hợp thì thử người khác; vẫn hết thì bỏ qua lọc "món vừa nhắc gần đây"
+      let r: AgentState | undefined;
+      let gift: ProductOffer | null = null;
+      for (const cand of shuffle(here.filter((x) => x.id !== g.id && !used.has(x.id)))) {
+        const skip = new Set([...this.ownedBy(cand.id), ...this.pendingOrders(cand.id), ...given]);
+        gift = this.chooseProduct([cand], tags, { def }, g.id, skip) ?? this.chooseProduct([cand], tags, { def }, g.id, skip, true);
+        if (gift) { r = cand; break; }
+      }
+      if (!r || !gift) continue;
+      used.add(r.id);
+      given.add(gift.product.id);
+      pairs++;
+      const short = shortNameOf(gift.product);
+      this.addOwned(r.id, gift.product.id);
+      w.setDeskItem(r.id, gift.product.id);
+      w.changeRelationship(g.id, r.id, 4, 'tặng quà bí mật');
+      w.changeRelationship(r.id, g.id, 4, 'được tặng quà bí mật');
+      w.addMemory(r.id, `Được ${g.name} tặng quà bí mật: ${short}`);
+      w.addMemory(g.id, `Bốc thăm trúng ${r.name}, tặng ${short}`);
+      this.logEvent('🎁', `Khui quà bí mật: ${g.name} tặng ${r.name} ${gift.product.emoji} ${gift.product.name}`, 'event', true);
+      if (pairs === 1) {
+        const now = this.now();
+        this.enqueue('desk_visit', now + rand(1, 5), now + 60, 'normal', {
+          initiatorId: g.id, targetId: r.id, why: `mang quà bí mật tới tặng ${r.name}`, tone: 'gift', productId: gift.product.id, productMode: 'gift',
+        });
+      }
+    }
+    // đã báo vụ mà không ghép được cặp nào (ít người / hết món hợp) → một dòng khép vụ, không im lặng
+    if (!pairs && here.length >= 2) this.logEvent('🎁', 'Vụ tặng quà bí mật khép lại sớm: chưa ai chọn được món ưng ý, hẹn dịp khác', 'event', true);
+  }
+
+  /** món đang chờ shipper giao cho người này */
+  private pendingOrders(agentId: string): string[] {
+    return this.timers.filter((t) => t.kind === 'delivery' && t.agentId === agentId && t.productId).map((t) => t.productId!);
   }
 
   private productTags(type: SceneType, people: AgentState[]): string[] {
     const t = new Set<string>(['van-phong']);
     const add = (...xs: string[]) => { for (const x of xs) t.add(x); };
     const min = this.world.minuteOfDay();
-    if (people.some((p) => fin(p.energy, 70) < 40)) add('ca-phe', 'nang-luong', 'do-uong');
+    if (people.some((p) => fin(p.energy, 70) < 40)) add('ca-phe', 'nang-luong', 'do-uong', 'tra');
     if (people.some((p) => fin(p.stress, 30) > 65)) add('thu-gian', 'massage', 'suc-khoe');
-    if (people.some((p) => isTech(p.role))) add('dev', 'ban-phim', 'chuot', 'tai-nghe', 'man-hinh', 'cong-nghe');
-    if (people.some((p) => p.role === 'designer')) add('design');
-    if (type === 'lunch') add('an-vat', 'hop-com', 'do-an', 'an-trua');
-    if (people.some((p) => p.role === 'marketing')) add('lam-dep', 'thoi-trang', 'livestream', 'tiktok', 'content');
-    if (type === 'celebration') add('qua-tang', 'tiec', 'karaoke');
-    if (people.some((p) => p.role === 'boss')) add('golf', 'sep');
+    if (people.some((p) => isTech(p.role))) add('dev', 'ban-phim', 'chuot', 'tai-nghe', 'man-hinh', 'cong-nghe', 'ban-lam-viec');
+    if (people.some((p) => p.role === 'designer')) add('design', 'decor');
+    if (type === 'lunch') add('an-vat', 'hop-com', 'do-an', 'an-trua', 'nau-an');
+    if (people.some((p) => p.role === 'marketing')) add('lam-dep', 'thoi-trang', 'livestream', 'tiktok', 'content', 'trang-diem');
+    if (type === 'celebration') add('qua-tang', 'tiec', 'karaoke', 'sinh-nhat', 'trang-suc');
+    if (people.some((p) => p.role === 'boss')) add('golf', 'sep', 'tra');
     if (people.some((p) => fin(p.stress, 30) > 50) || chance(0.3)) add('ghe', 'lung');
-    if ((min >= 690 && min <= 840) || people.some((p) => fin(p.energy, 70) < 30)) add('ngu-trua');
+    if ((min >= 690 && min <= 840) || people.some((p) => fin(p.energy, 70) < 30)) add('ngu-trua', 'chan-goi');
     if (this.now() < this.productBoostUntil) add('qua-tang', 'du-lich', 'thoi-trang');
     if (people.some((p) => p.role === 'salesnew' || p.role === 'junior') && chance(0.4)) add('game', 'gaming', 'sac', 'dien-thoai');
-    if (min >= 780 && min <= 960 && chance(0.25)) add('quat', 'may-lanh');
+    if (min >= 780 && min <= 960 && chance(0.25)) add('quat', 'may-lanh', 'nang', 'mo-hoi');
+    if (people.some((p) => p.role === 'saleslead' || p.role === 'salesnew') && chance(0.3)) add('cong-tac', 'du-lich', 'phong-hop');
+    if (/sáu/i.test(this.world.weekday()) && min >= 840) add('ve-sinh', 'don-dep', 'cuoi-tuan');
+    if (this.world.day() % 15 === 0) add('di-chua', 'ram', 'le');
     return [...t];
   }
 
@@ -4120,6 +4737,20 @@ export class Director implements DirectorApi {
       if (s && !s.ended && s.type === 'hr_review') {
         queue.push({ id: `${s.id}_r`, type: 'hr_review', at: now + 1, until: now + 150, prio: 'high', data: { note: s.meta.note, force: s.meta.force ? '1' : undefined } });
       }
+      // v5: họp xử lý / truyền lửa của tình huống công ty đang diễn dở → diễn lại sau khi khởi động (không thì mạch chờ 180 phút
+      // rồi "chốt nhanh qua điện thoại" — trái với cuộc họp người xem vừa thấy; pep_talk mất thì mất luôn ±0,2 xác suất kết cục)
+      if (s && !s.ended && s.meta.arcId && (s.type === 'crisis_meeting' || s.type === 'pep_talk')
+        && !queue.some((q) => q.type === s.type && q.data.arcId === s.meta.arcId)) {
+        const v = s.meta.variant;
+        const data: QData = s.type === 'crisis_meeting'
+          ? { arcId: s.meta.arcId }
+          : {
+            arcId: s.meta.arcId, variant: v, targetId: s.meta.targetId, note: s.req.crisis?.topic,
+            // dPepTalk xếp người tham gia [người nói, a, b]
+            ...(v === 'mediate' ? { aId: s.participants[1], bId: s.participants[2] } : {}),
+          };
+        queue.push({ id: `${s.id}_r`, type: s.type, at: now + 1, until: now + (s.type === 'crisis_meeting' ? 150 : 120), prio: s.prio, data });
+      }
       return {
         v: 2,
         seq: this.seq,
@@ -4157,6 +4788,10 @@ export class Director implements DirectorApi {
         boost: this.boost,
         productBoostUntil: this.productBoostUntil,
         recentProducts: this.recentProducts,
+        shopping: {
+          theme: this.theme, recentThemes: this.recentThemes, lastThemeDay: this.lastThemeDay, recentAngles: this.recentAngles,
+          productUses: this.productUses, owned: this.owned, deliveriesToday: this.deliveriesToday,
+        },
         companyToday: [...this.companyToday],
         actCounts: this.actCounts,
         daySawPresence: this.daySawPresence,
@@ -4166,6 +4801,37 @@ export class Director implements DirectorApi {
       this.err('serialize', e);
       return { v: 1 };
     }
+  }
+
+  /** v4: khôi phục chuyện mua sắm (phòng thủ: sai kiểu → bỏ qua; id sản phẩm không còn trong danh mục → bỏ) */
+  private restoreShopping(raw: unknown): void {
+    if (!isObj(raw)) return;
+    let valid = new Set<string>();
+    try { valid = new Set(getProducts().map((p) => p.id)); } catch { valid = new Set(); }
+    const t = raw.theme;
+    if (isObj(t) && typeof t.key === 'string' && themeByKey(t.key)) {
+      const until = numOrNull(t.until), startedAt = numOrNull(t.startedAt);
+      if (until !== null && startedAt !== null) this.theme = { key: t.key, until, startedAt, announce: str(t.announce, 300) ?? '' };
+    }
+    this.recentThemes = strList(raw.recentThemes, 6, 40);
+    this.lastThemeDay = numOrNull(raw.lastThemeDay) ?? -1;
+    this.recentAngles = strList(raw.recentAngles, 8, 40);
+    this.productUses = {};
+    if (isObj(raw.productUses)) {
+      for (const [k, v] of Object.entries(raw.productUses)) {
+        if (valid.has(k) && typeof v === 'number' && Number.isFinite(v) && v >= 0) this.productUses[k] = Math.min(Math.floor(v), 100000);
+      }
+    }
+    this.owned = {};
+    if (isObj(raw.owned)) {
+      for (const [id, list] of Object.entries(raw.owned)) {
+        if (!Array.isArray(list) || typeof id !== 'string' || id.length > 80) continue;
+        const items = list.filter((o): o is { id: string; day: number } => isObj(o) && typeof o.id === 'string' && valid.has(o.id) && typeof o.day === 'number')
+          .map((o) => ({ id: o.id, day: Math.floor(o.day) })).slice(-6);
+        if (items.length) this.owned[id] = items;
+      }
+    }
+    this.deliveriesToday = Math.max(0, Math.min(10, numOrNull(raw.deliveriesToday) ?? 0));
   }
 
   restore(data: unknown): void {
@@ -4208,6 +4874,7 @@ export class Director implements DirectorApi {
       this.boost = parseBoost(data.boost);
       this.productBoostUntil = fin(data.productBoostUntil, 0);
       this.recentProducts = strList(data.recentProducts, 8, 80);
+      this.restoreShopping(data.shopping);
       this.companyToday = new Set(strList(data.companyToday, 10, 20).filter((r): r is CompanyReason => COMPANY_REASONS.includes(r as CompanyReason)));
       this.actCounts = {};
       if (isObj(data.actCounts)) {
@@ -4267,13 +4934,17 @@ const ROLE_KEYS: RoleKey[] = ['boss', 'hr', 'techlead', 'senior', 'junior', 'qa'
 const TIMER_EVENTS: DevEventName[] = ['server_down', 'wifi_down', 'payday', 'birthday', 'deal', 'drama', 'release', 'hr_review', 'news', 'showrunner'];
 const TRAIT_KEYS: (keyof Traits)[] = ['diligence', 'laziness', 'gossip', 'temper', 'humor', 'ambition'];
 const Q_STR_KEYS = ['targetId', 'reason', 'note', 'name', 'label', 'centerId', 'rumorId', 'initiatorId', 'motiveKey', 'why', 'aboutId',
-  'tone', 'variant', 'exclude', 'channel', 'arcId', 'newLabel', 'hint', 'force'] as const;
+  'tone', 'variant', 'exclude', 'channel', 'arcId', 'newLabel', 'hint', 'force', 'productId', 'productMode', 'productAngle',
+  'kind', 'aId', 'bId'] as const;
 
 function splitIds(v: string | undefined): string[] {
   return typeof v === 'string' && v ? v.split(',').map((s) => s.trim()).filter(Boolean).slice(0, 12) : [];
 }
 function asTone(v: unknown): VisitTone | undefined {
-  return v === 'tense' || v === 'warm' || v === 'makeup' ? v : undefined;
+  return v === 'tense' || v === 'warm' || v === 'makeup' || v === 'unbox' || v === 'gift' || v === 'support' ? v : undefined;
+}
+function asProductMode(v: unknown): ProductMode {
+  return v === 'unboxing' || v === 'gift' || v === 'owner' || v === 'showroom' ? v : 'mention';
 }
 function asBossCallReason(v: unknown): BossCallReason | undefined {
   return v === 'praise' || v === 'scold' || v === 'task' ? v : undefined;
@@ -4359,6 +5030,18 @@ function parseTimer(raw: unknown): Timer | null {
     return { id, at, kind: 'clear_incident', incident };
   }
   if (raw.kind === 'personal') return { id, at, kind: 'personal', agentId: str(raw.agentId, 80) ?? undefined };
+  if (raw.kind === 'theme' || raw.kind === 'theme_end') {
+    const themeKey = str(raw.themeKey, 40) ?? undefined;
+    return { id, at, kind: raw.kind, ...(themeKey && themeByKey(themeKey) ? { themeKey } : {}) };
+  }
+  if (raw.kind === 'delivery') {
+    const agentId = str(raw.agentId, 80), productId = str(raw.productId, 80);
+    if (!agentId || !productId) return null;
+    const tries = typeof raw.tries === 'number' && Number.isFinite(raw.tries) ? clamp(Math.floor(raw.tries), 0, 5) : 0;
+    // bản lưu cũ chưa có since → tính từ giờ giao đã hẹn
+    const since = numOrNull(raw.since) ?? at;
+    return { id, at, kind: 'delivery', agentId, productId, tries, since };
+  }
   if (raw.kind === 'event' && TIMER_EVENTS.includes(raw.event as DevEventName)) {
     return { id, at, kind: 'event', event: raw.event as DevEventName, agentId: str(raw.agentId, 80) ?? undefined };
   }

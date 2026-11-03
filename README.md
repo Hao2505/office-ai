@@ -263,36 +263,44 @@ Muốn xem GPT nhận prompt gì: chạy `DEBUG_PROMPTS=1 npm start` (in prompt 
 
 ## 5. Phòng trưng bày & link Shopee tiếp thị liên kết
 
-Góc trên bên trái văn phòng là **phòng trưng bày** với 2 kệ: **LÀM ĐẸP** (trái) và **CÔNG NGHỆ** (phải). Đây là chỗ bạn
-bày những món **bạn thật sự đang dùng và thấy tốt**, mỗi món gắn link affiliate của bạn. Sản phẩm xuất hiện ở 4 nơi:
+Góc trên bên trái văn phòng là **phòng trưng bày** với 2 kệ: **LÀM ĐẸP & THỜI TRANG** (trái) và **CÔNG NGHỆ & NHÀ CỬA**
+(phải), mỗi kệ 2 tầng × 7 ô. Đây là chỗ bạn bày những món **bạn chọn giới thiệu** (hiện có **26 món chính thức**, danh sách
+gốc ở [`docs/danh-sach-26-san-pham.md`](docs/danh-sach-26-san-pham.md)), mỗi món gắn link affiliate của bạn. Sản phẩm xuất hiện ở 4 nơi:
 
 1. **Trên kệ** (bản đồ): rê chuột → tên + giá + "Xem trên Shopee ↗"; bấm → mở link ở tab mới.
 2. **Tab 🛍️ Sản phẩm**: liệt kê theo 2 nhóm, kèm nhận xét của bạn và nút mua.
 3. **Cảnh "Khoe đồ ở phòng trưng bày" 🛍️**: nhân viên thỉnh thoảng ra ngắm kệ; khi có ≥ 2 người đứng đó (hoặc theo lịch,
-   Trâm bên marketing rủ 1–2 người qua xem) thì một cảnh nổ ra: một người kể trải nghiệm thật với món đồ — **chất liệu là
-   câu nhận xét của bạn** — người kia khịa "ăn hoa hồng hả", hỏi giá (không ai nói giá), "để tối săn sale"… Câu nhắc món đồ có
-   **chip link** ngay dưới.
-4. Như trước: món đồ được nhắc tự nhiên trong cảnh tám ở pantry / ăn trưa / nhóm chat / ăn mừng, và mỗi nhân vật có một
-   "món đồ trên bàn" trong hồ sơ.
+   Trâm bên marketing rủ 1–2 người qua xem) thì một cảnh nổ ra quanh một món — ai trong nhóm **đã mua** món đó thì hay kể lại,
+   người kia khịa "ăn hoa hồng hả", nghi ngờ rồi xuôi dần… Câu nhắc món đồ có **chip link** ngay dưới.
+4. **Lồng vào chuyện thường ngày** (v4 — "chuyện mua sắm"): món đồ chỉ được nhắc khi **có cớ** — đang than mệt, ngủ trưa ê cổ,
+   nắng chiều chói màn hình, ăn trưa…; hoặc có **"vụ"** do sếp / HR phát động (bốc thăm quà bí mật, thi góc làm việc đẹp nhất,
+   tuần lễ sống khoẻ, tổng vệ sinh, tiệc công ty, bị giao chỉ tiêu giới thiệu kệ…); hoặc một người đã mua và thấy **ổn bất ngờ,
+   giá mềm** nên rủ đồng nghiệp xài. Có lúc nhân viên **chốt đơn** ngay trong cảnh → vài giờ sau **shipper giao hàng**, cả phòng
+   xúm lại xem khui hộp, món đó thành "món đồ trên bàn" của người mua (xem trong hồ sơ). Kiểu chuyện xoay vòng, AI tự nghĩ chi
+   tiết mới nên không lặp; nhân viên **không bao giờ đọc con số giá** (chỉ nói kiểu "rẻ bất ngờ", "giá mềm", "xót ví mà đáng").
 
 Mọi chip / nút đều ghi rõ "Link tiếp thị liên kết".
 
 ### 5.1 Thêm sản phẩm thật của bạn
 
-Danh sách nằm ở **`data/products.json`** (có sẵn 16 món MẪU — 7 làm đẹp, 9 công nghệ — link đang là link *tìm kiếm* Shopee;
-bạn thay bằng đồ của mình). Mỗi món:
+Danh sách nằm ở **`data/products.json`** (hiện là **26 món chính thức** của bạn: 12 làm đẹp & thời trang, 14 công nghệ &
+nhà cửa — link affiliate `s.shopee.vn`). Mỗi món (ví dụ thật trong file):
 
 ```json
 {
-  "id": "tai-nghe-chong-on",
-  "name": "Tai nghe chống ồn chụp tai",
-  "emoji": "🎧",
+  "id": "chan-goi-van-phong-cecila",
+  "name": "Chăn gối văn phòng hình thú CECILA",
+  "short": "gối thú bông kiêm chăn",
+  "emoji": "🧸",
   "category": "cong-nghe",
-  "slot": 1,
-  "note": "Mình xài ba tháng rồi, pin trâu, đeo cả ngày không đau tai, bật chống ồn là văn phòng im bặt.",
-  "pitch": "đeo vô là cả văn phòng im bặt, tập trung code nguyên buổi",
-  "priceHint": "~1,2tr",
-  "tags": ["tai-nghe", "dev", "cong-nghe", "van-phong"],
+  "slot": 10,
+  "tags": ["ngu-trua", "chan-goi", "van-phong", "may-lanh", "thu-gian"],
+  "pitch": "gối thú bông mở ra thành chăn để ngủ trưa văn phòng, đi xe, đi du lịch",
+  "facts": "gối hình khủng long hoặc husky, bên trong gấp sẵn chăn 1m×1m7, vải nỉ bông mềm, có chỗ luồn tay; giặt tay",
+  "avoid": "không nói lông vũ hay lông cừu; không có bộ sưởi điện",
+  "hooks": ["ngủ trưa gục bàn dậy là ê cổ", "máy lạnh văn phòng lạnh như tủ đông", "gối ngủ trưa bị ai lấy mất"],
+  "note": "Ban ngày là gối thú bông, trưa mở ra thành chăn 1m×1m7 — ngủ trưa văn phòng tiện hẳn.",
+  "priceHint": "~200k",
   "url": "https://s.shopee.vn/LINK-AFFILIATE-CUA-BAN"
 }
 ```
@@ -300,15 +308,19 @@ bạn thay bằng đồ của mình). Mỗi món:
 | Trường | Ý nghĩa |
 |---|---|
 | `id` | Mã duy nhất: chữ thường, không dấu, nối bằng `-`. **Đừng đổi id của món đang có** — thống kê click và "món đồ trên bàn" của nhân vật (`src/content/roster.ts`) dùng id này |
-| `name`, `emoji` | Tên hiển thị + emoji vẽ trên kệ khi chưa có ảnh (nhân vật gọi kiểu đời thường, không đọc nguyên tên) |
+| `name`, `emoji` | Tên hiển thị + emoji vẽ trên kệ khi chưa có ảnh |
+| `short` | **Tên gọi đời thường** nhân vật dùng khi nói ("gối thú bông kiêm chăn") — AI không đọc nguyên tên dài có thông số |
 | `category` | `lam-dep` → kệ LÀM ĐẸP, `cong-nghe` → kệ CÔNG NGHỆ. (`shelf` = `beauty` / `tech` tự suy ra, không cần ghi) |
-| `slot` | Vị trí trên kệ, đếm từ **0**, không trùng trong cùng kệ. **Slot 0–4 được vẽ trên kệ**; từ 5 trở lên chỉ hiện trong tab 🛍️. Bỏ trống thì server tự xếp theo thứ tự trong file |
-| `note` | **1 câu nhận xét thật của bạn**, xưng "mình" (nhân vật tự đổi thành em/anh/chị khi kể). Hiện nguyên văn trong tab 🛍️ và là chất liệu cho cảnh khoe đồ. Không giá, không link |
-| `pitch` | Câu khen ngắn, viết thường, cho các cảnh khác lồng vào thoại. Không giá, không link |
-| `priceHint` | Chỉ hiển thị trên chip / tooltip, AI không đọc |
+| `slot` | Vị trí trên kệ, đếm từ **0**, không trùng trong cùng kệ. Mỗi kệ 2 tầng × 7 ô: **slot 0–6 tầng trên, 7–13 tầng dưới**; từ 14 trở lên chỉ hiện trong tab 🛍️. Bỏ trống thì server tự xếp theo thứ tự trong file |
+| `note` | 1 câu giới thiệu **thông tin thật** của món, hiện nguyên văn trong tab 🛍️. Không giá, không link |
+| `pitch` | Mô tả ngắn, viết thường: món này là gì, dùng vào việc gì. Không giá, không link |
+| `facts` | Những điều **có thật** nhân vật được phép nói (lấy từ trang bán). AI không được bịa thêm công dụng / số liệu ngoài phần này |
+| `avoid` | Những điều **cấm nói** (tuyên bố chưa kiểm chứng, thông số dễ sai, chủ đề nhạy cảm) |
+| `hooks` | 2–5 **"cớ đời thường"** khiến món này được nhắc tự nhiên, viết như một mệnh đề: "ngủ trưa gục bàn dậy là ê cổ" |
+| `priceHint` | Giá tham khảo hiện trên chip / tooltip / tab 🛍️ (có thể đổi theo voucher). AI **không đọc con số** — chỉ biết món này rẻ (≤ 250k), vừa túi tiền (≤ 800k) hay hơi đắt; bỏ trống thì nhân vật không nhắc giá |
 | `url` | **Link tiếp thị liên kết của bạn** (lấy trong Shopee Affiliate). Chỉ server biết; trình duyệt luôn đi qua `/go/<id>` |
 | `image` | Tuỳ chọn: URL ảnh `https://…`. Không có thì vẽ emoji |
-| `tags` | Từ khoá để chọn món hợp ngữ cảnh trong các cảnh khác: `lam-dep`, `my-pham`, `thoi-trang`, `massage`, `suc-khoe`, `dev`, `ban-phim`, `chuot`, `tai-nghe`, `man-hinh`, `sac`, `dien-thoai`, `gaming`, `karaoke`, `livestream`, `du-lich`, `qua-tang`, `van-phong`… |
+| `tags` | Từ khoá để món xuất hiện **đúng lúc**: `ngu-trua`, `chan-goi`, `nau-an`, `an-trua`, `mo-hoi`, `nang`, `rem`, `ban-lam-viec`, `chuot`, `man-hinh`, `sao-luu`, `trinh-chieu`, `qua-tang`, `trang-suc`, `tiec`, `thoi-trang`, `trang-diem`, `ve-sinh`, `du-lich`… Dùng lại tag đang có để món hợp các "vụ" mua sắm (danh sách vụ trong `src/content/shopping.ts`) |
 
 Thêm / bớt món thoải mái (mỗi kệ bao nhiêu món cũng được), sửa xong **khởi động lại server**. Món nào sai định dạng sẽ bị bỏ
 qua (có cảnh báo trên terminal nói rõ sai gì), không làm sập web. Phần `_huong_dan` trong file cũng giải thích từng trường.
@@ -318,8 +330,12 @@ qua (có cảnh báo trên terminal nói rõ sai gì), không làm sập web. Ph
 - **Cảnh khoe đồ ở phòng trưng bày**: tự nổ ra khi ≥ 2 người đang đứng ở phòng trưng bày, cộng thêm lịch ~2–3 giờ game một
   lần (Trâm rủ đồng nghiệp qua xem). Giới hạn **1 cảnh / 30 phút thật** — đổi bằng `SHOWROOM_SCENE_MIN_MINUTES` trong `.env`
   (đặt `0` để bỏ giới hạn). Cảnh luôn có **đúng 1 câu** nhắc món đồ (kèm chip), không bao giờ nói giá hay đọc link.
-- **Các cảnh khác**: tối đa khoảng **8 phút một lần** (`PRODUCT_MENTION_MIN_MINUTES`), 50% cơ hội, chỉ trong cảnh hợp và chỉ hiện
-  chip khi nhân vật **thật sự nhắc** tới món đồ.
+- **Các cảnh khác**: tối đa khoảng **8 phút một lần** (`PRODUCT_MENTION_MIN_MINUTES`), 50% cơ hội (80% sau ngày lương hoặc khi
+  đang có "vụ" mua sắm), **chỉ khi món đó có cớ** trong cảnh, và chỉ hiện chip khi nhân vật **thật sự nhắc** tới món đồ.
+- **"Vụ" mua sắm**: khoảng một nửa số ngày có một vụ (sếp / HR phát động, kéo dài vài giờ); vài vụ có kết — khui quà bí mật
+  🎁, công bố người thắng thi góc làm việc 🏆. Hàng nhân viên đặt sẽ được giao tới văn phòng (tối đa 3 lần / ngày).
+- Câu nào lỡ nói con số giá sẽ bị máy lọc bỏ (giá Shopee đổi theo voucher, nói số dễ sai).
+- Chi tiết cho dev: [`docs/04-dao-dien-cau-chuyen-nhan-su.md`](docs/04-dao-dien-cau-chuyen-nhan-su.md) §11.
 
 ### 5.3 Click được đếm ở đâu?
 
@@ -399,10 +415,11 @@ ngẫu nhiên, có hạt giống mô phỏng 12 ngày không ai bị đuổi c�
 ### 6.4 AI biên kịch (showrunner)
 
 Mỗi **`SHOWRUNNER_EVERY_GAME_MINUTES`** phút game (mặc định 120, chỉ trong giờ làm) AI nhận một bức tranh ngắn (KPI dẫn đầu / đuối,
-quan hệ nổi bật, dự án, doanh thu, tin đồn, tin thời sự vừa bàn) và chọn **1–3 "biến"** từ thực đơn 17 loại:
+quan hệ nổi bật, dự án, doanh thu, tin đồn, tin thời sự vừa bàn) và chọn **1–3 "biến"** từ thực đơn 28 loại:
 `conflict` (bất đồng), `viral` (clip lên xu hướng), `big_bug`, `client_angry`, `secret_friendship`, `crush_rumor` (trong sáng),
 `raise_request`, `resign_threat`, `boss_mood_swing`, `team_building`, `new_client_deal`, `overtime_week`, `office_prank`,
-`lost_item`, `sick_day`, `karaoke_night`, `pitch_contest`. Mỗi biến thành một **mạch** 1–3 bước kéo dài vài giờ (ghé bàn căng → nhóm chat
+`lost_item`, `sick_day`, `karaoke_night`, `pitch_contest`, `shopping_story` (v4, chuyện quanh món trên kệ) và **10 tình huống
+công ty** (v5, mục 6.6). Mỗi biến thành một **mạch** 1–3 bước kéo dài vài giờ (ghé bàn căng → nhóm chat
 bàn tán → làm hoà…), tối đa 2 mạch mở cùng lúc, mỗi bước có xác suất "không xảy ra" để không gượng; mạch kết để lại ký ức cho người
 liên quan. Người xem chỉ thấy đời sống văn phòng; chỉ mạch đậm mới có một dòng 🎬 như tiêu đề chương (≤ 2 dòng/ngày).
 Nút dev 🎬 ép lên biến ngay. Không có AI → biên kịch offline chọn ngẫu nhiên theo tình hình (deadline sát → tăng ca / bug lớn; ai đó
@@ -421,6 +438,33 @@ buồn → úp mở nghỉ việc; doanh thu tốt → team building…). Tắt 
 
 Muốn drama dày hơn: hạ `SHOWRUNNER_EVERY_GAME_MINUTES` xuống 60–90, `HR_REVIEW_EVERY_DAYS=2`. Muốn yên bình: tăng lên 180–240,
 `HR_REVIEW_EVERY_DAYS=5`.
+
+### 6.6 Tình huống công ty (v5) — sếp AI, lead AI xử lý chuyện thật
+
+Công ty giờ gặp cả những chuyện như ở công ty thật — và **AI quản lý, AI quyết cách xử lý**:
+
+| Tình huống | Người xem thấy gì |
+|---|---|
+| 💸 Kẹt tiền xoay vòng vốn | khách chậm trả, nhóm chat xì xào "lương có về đúng ngày không", sếp họp cách xoay tiền |
+| 📉 Thị trường khó | khách cắt ngân sách, đối thủ phá giá; ban lãnh đạo tìm hướng, tệ quá thì HR xét lại nhân sự |
+| 📢 Khủng hoảng truyền thông | bị bóc phốt trên mạng, marketing đứng mũi chịu sào; xin lỗi, im lặng, tự giễu hay phản pháo |
+| 🌟 Tin vui về công ty | báo khen, khách cảm ơn công khai; khao, tranh thủ bán hàng hay nhắc "đừng ngủ quên" |
+| 🏠 Chuyện nhà ảnh hưởng công việc | một người gặp chuyện riêng, làm sa sút; lead / HR quyết cho nghỉ phép, linh hoạt, hay nhắc nhở |
+| ⚔️ Chia bè kết phái | hai phe ăn trưa riêng, nói xấu nhau; HR hoà giải, team building bắt buộc, cứng rắn hay kệ |
+| ✊ Nhân viên chống đối | từ chối tăng ca, phản đối chính sách mới, cãi sếp trong họp; lắng nghe, thương lượng hay kỷ luật |
+| 📣 Sếp làm công tác tư tưởng | tinh thần đi xuống; sếp truyền lửa cả phòng, nói riêng người buồn nhất, hay khao trà sữa |
+| 🎣 Đối thủ câu người | người giỏi được offer lương cao; tăng lương, hứa thăng chức hay để đi |
+| 🤵 Nhà đầu tư ghé thăm | cả công ty chuẩn bị; trình bày thật, "diễn" cho đẹp hay liều demo tính năng chưa xong |
+
+Mỗi tình huống kéo dài vài giờ tới một ngày: **bùng phát** (dòng sự kiện + nhóm chat kín bàn tán) → **cuộc họp 🧯** của sếp với
+lead / HR (người trong cuộc có khi được gọi vào) — **AI viết cuộc họp và tự chốt một trong 3–4 phương án** → **triển khai** (thông báo
+nhóm công ty, sếp "truyền lửa" 📣, hoà giải, giao việc, tăng ca…) → **kết cục** ✅ / ⚠️. Kết cục không do AI tự cho đẹp: code tung
+xác suất theo phương án đã chọn và tình hình (buổi truyền lửa thuyết phục được thì dễ thành công hơn), nên có lúc chọn đúng mà vẫn
+xui. Kết cục xấu có thể kéo theo người dọa nghỉ, hay một kỳ HR xét lại nhân sự (vẫn qua hàng rào như thường).
+
+Hạn mức AI: mỗi lúc chỉ **một** tình huống, AI biên kịch chỉ được xem ≤ 3 loại hợp tình hình mỗi lần (đỡ tốn chữ); cuộc họp và buổi
+truyền lửa là cảnh thường, đi qua cùng cổng tiết kiệm token; hết quota thì thoại mẫu offline vẫn diễn đúng phương án. Chi tiết cho
+dev: [docs/04](docs/04-dao-dien-cau-chuyen-nhan-su.md) §16.
 
 ---
 

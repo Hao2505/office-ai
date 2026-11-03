@@ -2,7 +2,7 @@
 // thảm, bóng đổ của nội thất, nhãn phòng. Vẽ 1 lần vào canvas offscreen (vẽ lại khi đổi tỉ lệ).
 import { hash2 } from '../util.js';
 import {
-  rrPath, fillRR, rect, ellipse, circle, line, softShadow, softEllipseShadow, vGrad, makeCanvas, FONT, EMOJI_FONT, alpha,
+  rrPath, fillRR, rect, ellipse, circle, line, softShadow, softEllipseShadow, vGrad, makeCanvas, FONT, alpha, drawEmoji,
 } from './draw.js';
 import { ROOM_ICONS } from '../labels.js';
 
@@ -201,8 +201,7 @@ function paintClosedRoom(ctx, room) {
   fillRR(ctx, cx - 1.1, cy - 0.62, 2.2, 1.24, 0.16, 'rgba(255,255,255,0.78)');
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.font = `0.62px ${EMOJI_FONT}`;
-  ctx.fillText('🚻', cx, cy - 0.17);
+  drawEmoji(ctx, '🚻', cx, cy - 0.17, 0.62);
   ctx.fillStyle = '#334155';
   ctx.font = `800 0.34px ${FONT}`;
   ctx.fillText('WC', cx, cy + 0.36);
@@ -533,8 +532,7 @@ function wcDoorSign(ctx, cx, y) {
   rect(ctx, cx - 0.36, y + CAP + 0.06, 0.72, 0.02, 'rgba(255,255,255,0.35)');
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.font = `0.17px ${EMOJI_FONT}`;
-  ctx.fillText('🚻', cx - 0.2, y + CAP + 0.165);
+  drawEmoji(ctx, '🚻', cx - 0.2, y + CAP + 0.165, 0.17);
   ctx.fillStyle = '#ffffff';
   ctx.font = `800 0.17px ${FONT}`;
   ctx.fillText('WC', cx + 0.14, y + CAP + 0.165);
@@ -695,24 +693,46 @@ const LABEL_POS = {
 };
 const ROOM_ICONS_V2 = { ...ROOM_ICONS, showroom: '🛍️', wc: '🚻' };
 
-function roomLabel(ctx, room, T) {
-  const icon = ROOM_ICONS_V2[room.id] || '📍';
-  const pos = LABEL_POS[room.id] || [room.x + 0.25, room.y + 0.3];
-  const fs = Math.max(0.36, 9.5 / T);
-  ctx.font = `700 ${fs}px ${FONT}`;
-  const tw = ctx.measureText(room.label).width;
-  const iw = fs * 1.25;
-  const w = tw + iw + fs * 0.9, h = fs * 1.55;
-  const [x, y] = pos;
-  fillRR(ctx, x + 0.02, y + 0.04, w, h, h / 2, 'rgba(60,40,20,0.12)');
-  fillRR(ctx, x, y, w, h, h / 2, room.floor === 'dark' || room.floor === 'boss' ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.78)');
+/**
+ * Nhãn phòng, vẽ MỖI KHUNG theo px màn hình (gọi ngay sau khi dán layer tĩnh, nên vẫn nằm dưới nội thất + nhân vật).
+ * Trước đây nướng vào layer tĩnh theo đơn vị ô → phóng to là chữ phình theo (lớn hơn cả tên người),
+ * bản đồ nhỏ (điện thoại xoay ngang) thì nhãn to hơn cả phòng. Giờ: ~9,5 px × ui, nhích lên tối đa 13 px khi phóng to,
+ * ẩn hẳn khi ô < 7 px (bản đồ quá nhỏ, nhãn chỉ che phòng); nhãn đụng nhãn vẽ trước hoặc đụng `avoid` (biển WC) thì bỏ.
+ * ctx: transform px CSS (dpr, 0, 0, dpr, 0, 0); ox / oy: gốc bản đồ (px CSS); ui: hệ số co chữ nổi (office.js).
+ */
+export function drawRoomLabels(ctx, world, T, ox, oy, ui = 1, avoid = []) {
+  if (!world || T < 7) return;
+  const fs0 = Math.min(13, Math.max(9.5 * ui, 0.36 * T));
+  // bản đồ nhỏ: nhãn sau đụng nhãn trước (vd "Phòng server" đè đuôi "Phòng trưng bày") hoặc đụng biển WC → thu nhỏ chữ
+  // (tối đa còn 72 %, không dưới 7,5 px) cho vừa; vẫn đụng thì bỏ nhãn sau
+  const placed = Array.isArray(avoid) ? avoid.filter((r) => r && Number.isFinite(r.x)) : [];
+  const hitsPlaced = (x, y, w, h) => placed.some((r) => x < r.x + r.w + 2 && r.x < x + w + 2 && y < r.y + r.h + 1 && r.y < y + h + 1);
+  ctx.save();
   ctx.textBaseline = 'middle';
   ctx.textAlign = 'left';
-  ctx.font = `${fs * 0.92}px ${EMOJI_FONT}`;
-  ctx.fillText(icon, x + fs * 0.4, y + h / 2 + fs * 0.05);
-  ctx.font = `700 ${fs}px ${FONT}`;
-  ctx.fillStyle = '#5b4636';
-  ctx.fillText(room.label, x + fs * 0.4 + iw, y + h / 2 + fs * 0.04);
+  for (const room of world.rooms) {
+    if (room.id === 'wc') continue;
+    const icon = ROOM_ICONS_V2[room.id] || '📍';
+    const pos = LABEL_POS[room.id] || [room.x + 0.25, room.y + 0.3];
+    const x = Math.round(ox + pos[0] * T), y = Math.round(oy + pos[1] * T);
+    let fs = 0, iw = 0, h = 0, w = 0;
+    for (const k of [1, 0.85, 0.72]) {
+      const f = fs0 * k;
+      if (k < 1 && f < 7.5) break;
+      ctx.font = `700 ${f}px ${FONT}`;
+      const fw = ctx.measureText(room.label).width + f * 1.25 + f * 0.9, fh = f * 1.55;
+      if (!hitsPlaced(x, y, fw, fh)) { fs = f; iw = f * 1.25; h = fh; w = fw; break; }
+    }
+    if (!fs) continue;
+    placed.push({ x, y, w, h });
+    fillRR(ctx, x + 0.6, y + 1.2, w, h, h / 2, 'rgba(60,40,20,0.12)');
+    fillRR(ctx, x, y, w, h, h / 2, room.floor === 'dark' || room.floor === 'boss' ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.78)');
+    drawEmoji(ctx, icon, x + fs * 0.4, y + h / 2 + fs * 0.05, fs * 0.92, 'left');
+    ctx.font = `700 ${fs}px ${FONT}`;
+    ctx.fillStyle = '#5b4636';
+    ctx.fillText(room.label, x + fs * 0.4 + iw, y + h / 2 + fs * 0.04);
+  }
+  ctx.restore();
 }
 
 // ------------------------------------------------------------------ vẽ layer
@@ -826,8 +846,7 @@ export function renderFloorLayer(world, T, dpr, opts = {}) {
     }
   }
 
-  // nhãn phòng
-  for (const r of world.rooms) if (r.id !== 'wc') roomLabel(ctx, r, T);
+  // nhãn phòng: không nướng vào layer — office.js vẽ mỗi khung bằng drawRoomLabels() (cỡ chữ theo px màn hình)
 
   return { canvas: cv, T, dpr, x0: -M, y0: -M, w: W + 2 * M, h: H + 2 * M, clock };
 }

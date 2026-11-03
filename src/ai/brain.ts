@@ -12,7 +12,7 @@ import type {
 } from '../types.js';
 import { COMPANY_INFO } from '../content/catalog.js';
 import { pickProduct } from '../content/products.js';
-import { LOOK_POOL } from '../content/roster.js';
+import { LOOK_POOL, DESK_ITEM_TAGS } from '../content/roster.js';
 import { describeError, localTimeLabel, LlmError, type LlmTask } from './llm.js';
 import { createRouter, type RouterLogger } from './router.js';
 import { offlineBeats, offlineCandidate, offlineRecap, offlineScene } from './offline.js';
@@ -44,18 +44,8 @@ const BREAKER_BASE_MS = 60_000;
 const BREAKER_MAX_MS = 600_000;
 
 /** Tag sản phẩm affiliate cho món đồ trên bàn người mới (SPEC 5.5 + tag thật trong data/products.json) */
-const DESK_TAGS: Record<RoleKey, string[]> = {
-  boss: ['golf', 'sep', 'van-phong', 'thu-gian'],
-  hr: ['so-tay', 'ke-hoach', 'van-phong', 'thu-gian'],
-  techlead: ['dev', 'ban-phim', 'man-hinh', 'ca-phe', 'den'],
-  senior: ['dev', 'tai-nghe', 'ban-phim', 'chuot', 'laptop'],
-  junior: ['dev', 'sach', 'hoc', 'chuot', 'gaming'],
-  qa: ['dev', 'chuot', 'man-hinh', 'mat', 'den'],
-  designer: ['design', 'man-hinh', 'chuot', 'trang-tri', 'cay-xanh'],
-  saleslead: ['karaoke', 'sac', 'dien-thoai', 'tai-nghe', 'ca-phe'],
-  salesnew: ['sac', 'dien-thoai', 'gaming', 'game', 'nang-luong'],
-  marketing: ['livestream', 'tiktok', 'content', 'lam-dep', 'thoi-trang'],
-};
+/** món đồ trên bàn cho nhân viên mới: tag theo vai (src/content/roster.ts) */
+const DESK_TAGS: Record<RoleKey, string[]> = DESK_ITEM_TAGS;
 
 /** Chạy fn với AbortSignal; quá ms thì huỷ và reject ngay. */
 function withDeadline<T>(ms: number, label: string, fn: (signal: AbortSignal) => Promise<T>): Promise<T> {

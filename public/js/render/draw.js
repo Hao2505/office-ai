@@ -198,10 +198,28 @@ export function fitText(ctx, text, cx, cy, maxW, size, weight = 700, color = '#1
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(text, cx, cy);
+  return w * (s / size); // bề rộng đã vẽ (để đặt biểu tượng cạnh chữ)
 }
 
 export const FONT = '"Be Vietnam Pro", "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif';
 export const EMOJI_FONT = '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Segoe UI Symbol", sans-serif';
+
+/**
+ * Vẽ emoji cao `size` (đơn vị toạ độ hiện tại, thường là ô). Chrome bỏ qua / vẽ lệch emoji màu khi cỡ chữ
+ * danh nghĩa < ~0,4 dù đã phóng to bằng transform (đo 2026-11-03) → luôn đặt font 16px rồi thu/phóng.
+ */
+export function drawEmoji(ctx, emoji, x, y, size, align = 'center') {
+  const k = size / 16;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(k, k);
+  ctx.font = `16px ${EMOJI_FONT}`;
+  ctx.textAlign = align;
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#111827';
+  ctx.fillText(emoji, 0, 0);
+  ctx.restore();
+}
 
 export function makeCanvas(w, h) {
   const c = document.createElement('canvas');

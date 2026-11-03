@@ -1,24 +1,27 @@
 {
-  "_note": "Danh sách sản phẩm tiếp thị liên kết — hiện trên 2 kệ ở PHÒNG TRƯNG BÀY (kệ Làm đẹp / kệ Công nghệ), trong tab 🛍️ Sản phẩm và trong lời thoại của nhân vật. Đây là dữ liệu MẪU: thay bằng đồ thật bạn đang dùng + link affiliate Shopee của bạn. Sửa xong khởi động lại server. Mục nào sai định dạng sẽ bị bỏ qua (có cảnh báo trên terminal), không làm sập web. | 2 sản phẩm THẬT (link affiliate) đang ở slot 0 mỗi kệ; các sản phẩm còn lại là MẪU (link tìm kiếm Shopee), thay dần bằng hàng thật từ docs/real-products.json.",
+  "_note": "26 sản phẩm CHÍNH THỨC (03/11/2026) của chủ dự án — link tiếp thị liên kết Shopee. Hiện trên 2 kệ PHÒNG TRƯNG BÀY (mỗi kệ 2 tầng × 7 ô), trong tab 🛍️ Sản phẩm và trong lời thoại. Nguồn thông tin: docs/danh-sach-26-san-pham.md (diễn giải từ trang bán, không phải kết quả kiểm nghiệm). Sửa xong khởi động lại server; mục sai định dạng bị bỏ qua (có cảnh báo), không làm sập web.",
   "_huong_dan": {
-    "id": "Mã duy nhất, chữ thường không dấu, nối bằng '-' (vd 'tai-nghe-chong-on'). Đừng đổi id của món đang có: thống kê click (/api/stats) và 'món đồ trên bàn' của nhân vật (src/content/roster.ts) dùng id này.",
-    "name": "Tên hiển thị trên chip, tooltip và tab 🛍️ (nhân vật sẽ gọi kiểu đời thường, không đọc nguyên tên).",
-    "emoji": "1 emoji vẽ trên kệ khi chưa có ảnh.",
-    "category": "'lam-dep' (kệ LÀM ĐẸP, bên trái) hoặc 'cong-nghe' (kệ CÔNG NGHỆ, bên phải). Thiếu thì suy từ tags.",
-    "shelf": "Tuỳ chọn, suy từ category: 'beauty' | 'tech'. Có ghi mà lệch category thì server sửa theo category.",
-    "slot": "Vị trí trên kệ, đếm từ 0, không trùng trong cùng kệ. Slot 0–4 được VẼ trên kệ ở văn phòng; slot từ 5 trở lên chỉ hiện trong tab 🛍️. Thiếu thì server tự xếp theo thứ tự trong file.",
-    "note": "1 câu nhận xét THẬT của bạn (xưng 'mình'), vd 'Mình xài 3 tháng rồi, pin trâu, đeo cả ngày không đau tai'. Nhân vật dùng câu này làm chất liệu khi khoe món đồ ở phòng trưng bày và tab 🛍️ hiển thị nguyên văn. Không ghi giá, không ghi link.",
-    "pitch": "Câu khen ngắn, viết thường, để nhân vật lồng vào các cảnh khác (pantry, ăn trưa, nhóm chat). Không giá, không link.",
-    "priceHint": "Chỉ để hiển thị trên chip/tooltip (vd '~350k'). AI không đọc giá.",
-    "url": "Link tiếp thị liên kết Shopee của bạn (https://s.shopee.vn/...). Chỉ server biết; trình duyệt luôn đi qua /go/<id>?src=showroom|sidebar|scene|desk để đếm click rồi mới chuyển hướng.",
-    "image": "Tuỳ chọn: URL ảnh https. Không có thì vẽ emoji.",
-    "tags": "Từ khoá để chọn sản phẩm hợp ngữ cảnh trong các cảnh khác (lam-dep, my-pham, thoi-trang, massage, suc-khoe, dev, ban-phim, chuot, tai-nghe, man-hinh, sac, dien-thoai, gaming, karaoke, livestream, du-lich, qua-tang, van-phong...).",
-    "them_san_pham": "Copy một mục bất kỳ, đổi id / name / emoji / category / slot / note / url (và pitch, priceHint, tags nếu muốn), lưu file, khởi động lại server."
+    "id": "Mã duy nhất, chữ thường không dấu, nối bằng '-'. Đừng đổi id của món đang có: thống kê click (/api/stats) và 'món đồ trên bàn' của nhân vật dùng id này.",
+    "name": "Tên hiển thị trên chip, tooltip và tab 🛍️.",
+    "short": "Tên gọi đời thường (vd 'chuột gaming không dây') — nhân vật dùng tên này khi nói, AI không đọc nguyên tên catalogue.",
+    "spoken": "Tuỳ chọn, tối đa 60 ký tự: mệnh đề nói được cho câu thoại mẫu khi không có AI (vd 'mặt vải, đế cao su chống trượt'). Chỉ cần khi pitch lặp lại tên gọi đời thường; phải đúng với facts, không giá.",
+    "emoji": "1 emoji vẽ trên kệ.",
+    "category": "'lam-dep' (kệ LÀM ĐẸP & THỜI TRANG, bên trái) hoặc 'cong-nghe' (kệ CÔNG NGHỆ & NHÀ CỬA, bên phải).",
+    "slot": "Vị trí trên kệ, đếm từ 0, không trùng trong cùng kệ. 0–6 = tầng trên, 7–13 = tầng dưới; từ 14 trở lên chỉ hiện trong tab 🛍️.",
+    "tags": "Từ khoá ngữ cảnh để món xuất hiện ĐÚNG LÚC (vd ngu-trua, nau-an, mo-hoi, ban-lam-viec, qua-tang, tiec, rem, sao-luu…) và để khớp các 'vụ mua sắm' trong src/content/shopping.ts.",
+    "pitch": "Mô tả ngắn, viết thường, để AI hiểu món này là gì. Không giá, không link.",
+    "facts": "Những điều CÓ THẬT nhân vật được phép nói (lấy từ trang bán). AI không được bịa thêm công dụng/số liệu ngoài phần này.",
+    "avoid": "Những điều CẤM nói (tuyên bố chưa kiểm chứng, thông số lệch, chủ đề nhạy cảm).",
+    "hooks": "2–5 'cớ đời thường' (mệnh đề không chủ ngữ) khiến món này được nhắc tới tự nhiên, vd 'ngủ trưa gục bàn dậy là ê cổ'.",
+    "note": "1 câu giới thiệu hiển thị trong tab 🛍️ (thông tin thật, không phải lời chứng thực).",
+    "priceHint": "Giá tham khảo hiển thị trên chip/tooltip (vd '~390k'), có thể đổi theo voucher. AI không đọc con số; chỉ nhận cảm nhận giá (rẻ / vừa / hơi đắt) suy từ đây.",
+    "url": "Link tiếp thị liên kết Shopee. Chỉ server biết; trình duyệt luôn đi qua /go/<id>?src=… để đếm click rồi mới chuyển hướng."
   },
   "products": [
     {
       "id": "bang-phan-mat-cheeryep",
-      "name": "Bảng phấn mắt CHEERYEP",
+      "name": "Bảng phấn mắt CHEERYEP Natural Star",
+      "short": "bảng phấn mắt",
       "emoji": "🎨",
       "category": "lam-dep",
       "shelf": "beauty",
@@ -27,150 +30,329 @@
         "lam-dep",
         "trang-diem",
         "makeup",
-        "phu-nu"
+        "livestream",
+        "content",
+        "tiec",
+        "chup-anh"
       ],
-      "pitch": "bảng phấn mắt CHEERYEP nhiều ô màu, có cả nhũ lẫn lì, dễ tán",
-      "priceHint": "",
-      "note": "Mình đang xài bảng này, màu lên chuẩn, dễ tán, đi làm hay đi chơi đều hợp.",
+      "pitch": "bảng phấn mắt nhiều màu có lì, shimmer, satin và ánh kim, phối được cả đi làm lẫn đi tiệc",
+      "facts": "16 ô màu phối lì, shimmer, satin, ánh kim; vài ô đổi sắc theo ánh sáng; hộp bạc ánh hologram; có tông hồng đào, mocha, nâu đỏ, nhũ tiệc",
+      "avoid": "không nói trọng lượng phấn; không hứa bám màu cả ngày; shop ghi phấn mềm có thể vụn khi vận chuyển",
+      "hooks": [
+        "chiều nay chụp ảnh hồ sơ công ty",
+        "tối đi tiệc mà mặt mộc như đi làm",
+        "livestream bán hàng mà mắt nhạt nhoà"
+      ],
+      "note": "16 ô màu: lì, shimmer, satin, ánh kim — đi làm hay đi tiệc đều phối được.",
+      "priceHint": "~390k",
       "url": "https://s.shopee.vn/2gCMqq7e1S?share_channel_code=8"
     },
     {
-      "id": "son-kem-li",
-      "name": "Son kem lì mềm môi",
-      "emoji": "💄",
-      "category": "lam-dep",
-      "shelf": "beauty",
-      "slot": 1,
-      "note": "Mình đánh màu đất này đi làm hợp lắm, ăn trưa xong vẫn còn màu mà môi không bị khô.",
-      "tags": [
-        "lam-dep",
-        "my-pham",
-        "thoi-trang",
-        "qua-tang",
-        "van-phong"
-      ],
-      "pitch": "đánh một lần, ăn trưa uống trà sữa xong vẫn còn màu",
-      "priceHint": "~180k",
-      "url": "https://shopee.vn/search?keyword=Son%20kem%20l%C3%AC%20m%E1%BB%81m%20m%C3%B4i"
-    },
-    {
-      "id": "kem-chong-nang",
-      "name": "Kem chống nắng nâng tông",
+      "id": "serum-khu-mui-blanica",
+      "name": "Serum khử mùi BLANICA",
+      "short": "serum khử mùi",
       "emoji": "🧴",
       "category": "lam-dep",
       "shelf": "beauty",
-      "slot": 2,
-      "note": "Mình xài thay kem nền luôn, mỏng nhẹ, chạy xe ngoài nắng tới công ty mặt vẫn ráo không bết.",
+      "slot": 1,
       "tags": [
         "lam-dep",
-        "my-pham",
-        "suc-khoe",
-        "du-lich",
-        "van-phong"
+        "ca-nhan",
+        "mo-hoi",
+        "the-thao",
+        "nang",
+        "may-lanh"
       ],
-      "pitch": "bôi mỏng nhẹ, chạy xe ngoài nắng cả ngày không bết",
-      "priceHint": "~220k",
-      "url": "https://shopee.vn/search?keyword=Kem%20ch%E1%BB%91ng%20n%E1%BA%AFng%20n%C3%A2ng%20t%C3%B4ng"
+      "pitch": "serum dạng lỏng cho vùng dưới cánh tay, hương bạc hà nhẹ, thấm nhanh không nhờn",
+      "facts": "chai 10ml, chừng 1 giọt mỗi bên sau khi tắm; hương bạc hà nhẹ; shop ghi không cồn, không gây ố vàng áo; sản xuất ở Việt Nam",
+      "avoid": "là mỹ phẩm, không phải thuốc, hiệu quả tuỳ người; không hứa hết mùi vĩnh viễn; tuyệt đối không chê mùi cơ thể người khác, chỉ được tự giễu",
+      "hooks": [
+        "vừa đánh bóng bàn xong mồ hôi nhễ nhại",
+        "trưa nắng đi gặp khách về ướt lưng áo",
+        "máy lạnh hư cả buổi chiều"
+      ],
+      "note": "Chai 10ml dạng serum, hương bạc hà nhẹ, chấm 1 giọt mỗi bên sau khi tắm.",
+      "priceHint": "~158k",
+      "url": "https://s.shopee.vn/5AthpfaOtA?share_channel_code=8"
     },
     {
-      "id": "serum-cap-am",
-      "name": "Serum cấp ẩm HA",
-      "emoji": "💧",
+      "id": "feelex-care-men",
+      "name": "Bộ chăm sóc nam Feelex",
+      "short": "bộ chăm sóc cho nam",
+      "emoji": "🧼",
+      "category": "lam-dep",
+      "shelf": "beauty",
+      "slot": 2,
+      "tags": [
+        "lam-dep",
+        "ca-nhan",
+        "the-thao",
+        "mo-hoi",
+        "du-lich",
+        "cong-tac"
+      ],
+      "pitch": "đồ chăm sóc cá nhân cho nam, có combo kèm chai tắm gội rửa mặt 3in1 tiện mang đi",
+      "facts": "chai Care Men 100ml và combo kèm sữa tắm gội rửa mặt 3in1 350ml; ba mùi Mát Mẻ, Quyến Rũ, Nam Tính; có trầu không, cây phỉ, cúc La Mã",
+      "avoid": "không nói chi tiết vùng kín, không đùa tục; không nói tác dụng y khoa; giá hiển thị là của chai lẻ",
+      "hooks": [
+        "đá bóng công ty xong phải tắm vội",
+        "đi công tác chỉ muốn xách một chai cho gọn",
+        "tìm quà cho anh em trong team"
+      ],
+      "note": "Đồ chăm sóc cá nhân cho nam, có combo kèm chai tắm gội rửa mặt 3in1 tiện mang đi.",
+      "priceHint": "~109k",
+      "url": "https://s.shopee.vn/7VHccEuBy7?share_channel_code=8"
+    },
+    {
+      "id": "nen-thom-heny-garden",
+      "name": "Nến thơm HENY GARDEN",
+      "short": "hũ nến thơm",
+      "emoji": "🕯️",
       "category": "lam-dep",
       "shelf": "beauty",
       "slot": 3,
-      "note": "Ngồi máy lạnh cả ngày da mình khô lắm, bôi hai giọt buổi sáng là căng tới chiều.",
       "tags": [
         "lam-dep",
-        "my-pham",
-        "suc-khoe",
-        "may-lanh",
-        "van-phong"
+        "thu-gian",
+        "qua-tang",
+        "decor",
+        "sinh-nhat"
       ],
-      "pitch": "ngồi máy lạnh cả ngày da vẫn căng, không bị khô",
-      "priceHint": "~250k",
-      "url": "https://shopee.vn/search?keyword=Serum%20c%E1%BA%A5p%20%E1%BA%A9m%20HA"
+      "pitch": "nến thơm cho phòng nhỏ, nhiều mùi như trà sen, gỗ trầm, Đà Lạt gỗ, lài và gỗ",
+      "facts": "các mùi Dreams (Ngủ Ngon), Trà Sen, Gỗ Trầm, Đà Lạt Gỗ, Fresh Air, Lài & Gỗ, Hoa Trầm; tặng kèm đế gỗ và thiệp",
+      "avoid": "tên mùi 'Ngủ Ngon' không có nghĩa là trị mất ngủ; không nói thời gian cháy hay khối lượng sáp",
+      "hooks": [
+        "deadline dí căng tới mức chỉ muốn về nhà thắp nến nằm im",
+        "cần món quà sinh nhật mà lịch sự",
+        "muốn góc phòng trọ có chút mùi thơm cho dễ chịu"
+      ],
+      "note": "Nhiều mùi: trà sen, gỗ trầm, Đà Lạt gỗ, lài & gỗ… kèm đế gỗ và thiệp.",
+      "priceHint": "~303k",
+      "url": "https://s.shopee.vn/906QOjdU22?share_channel_code=8"
     },
     {
-      "id": "may-say-toc-mini",
-      "name": "Máy sấy tóc mini gấp gọn",
-      "emoji": "💇",
+      "id": "hop-trang-suc-eleanor",
+      "name": "Hộp trang sức Eleanor nhiều ngăn có khoá",
+      "short": "hộp trang sức",
+      "emoji": "💍",
       "category": "lam-dep",
       "shelf": "beauty",
       "slot": 4,
-      "note": "Mình mang đi công tác đi chơi suốt, nhỏ bằng bàn tay mà sấy nhanh, tóc không bị khét.",
       "tags": [
         "lam-dep",
-        "du-lich",
-        "cong-nghe",
-        "qua-tang"
+        "trang-suc",
+        "qua-tang",
+        "sinh-nhat",
+        "gon-gang"
       ],
-      "pitch": "nhỏ bằng bàn tay mà sấy nhanh, đi công tác tiện cực",
-      "priceHint": "~350k",
-      "url": "https://shopee.vn/search?keyword=M%C3%A1y%20s%E1%BA%A5y%20t%C3%B3c%20mini%20g%E1%BA%A5p%20g%E1%BB%8Dn"
+      "pitch": "hộp đựng nhẫn, bông tai, dây chuyền, đồng hồ nhiều ngăn, bọc da PU lót nhung, có khoá",
+      "facts": "bọc da PU, lót nhung mịn, nhiều ngăn, 2 tầng, có khoá; mẫu 9171 khoảng 23×17×10,5cm; hợp để bàn hoặc làm quà",
+      "avoid": "không gọi là da thật; kích thước chỉ đúng mẫu 9171, các mẫu khác khác nhau",
+      "hooks": [
+        "nhẫn với bông tai vứt lung tung trong ngăn kéo",
+        "đang bí quà sinh nhật cho đồng nghiệp",
+        "tháo đồng hồ ra không biết để đâu"
+      ],
+      "note": "Bọc da PU, lót nhung, nhiều ngăn có khoá — để bàn hay làm quà đều xinh.",
+      "priceHint": "~128k",
+      "url": "https://s.shopee.vn/AAINmjYHHl?share_channel_code=8"
     },
     {
-      "id": "den-ring-light",
-      "name": "Đèn ring light kẹp điện thoại",
-      "emoji": "🤳",
+      "id": "hop-trang-suc-du-lich-eleanor",
+      "name": "Hộp trang sức du lịch Eleanor",
+      "short": "hộp trang sức du lịch",
+      "emoji": "👛",
       "category": "lam-dep",
       "shelf": "beauty",
       "slot": 5,
-      "note": "Mình kẹp vào bàn để họp online với quay clip, da sáng hẳn mà khỏi phải chỉnh app.",
       "tags": [
-        "livestream",
         "lam-dep",
-        "tiktok",
-        "content",
-        "marketing",
-        "van-phong"
+        "trang-suc",
+        "du-lich",
+        "cong-tac",
+        "qua-tang"
       ],
-      "pitch": "quay clip da sáng mịn, livestream nhìn chuyên nghiệp hẳn",
-      "priceHint": "~250k",
-      "url": "https://shopee.vn/search?keyword=%C4%90%C3%A8n%20ring%20light%20livestream%20k%E1%BA%B9p%20%C4%91i%E1%BB%87n%20tho%E1%BA%A1i"
+      "pitch": "hộp trang sức nhỏ gọn nhiều ngăn có khoá, bỏ túi mang đi du lịch, đi công tác",
+      "facts": "nhỏ 9,5×9,5×3,5cm, bọc PU, lót nhung, có khoá; đựng nhẫn, bông tai, dây chuyền, phụ kiện nhỏ",
+      "avoid": "màu và cách chia ngăn tuỳ phân loại",
+      "hooks": [
+        "sắp đi công tác mà lần trước làm rơi mất một chiếc bông tai",
+        "đi du lịch công ty cần đồ gọn nhẹ",
+        "cần món quà nhỏ cho bạn hay đi đây đi đó"
+      ],
+      "note": "Nhỏ bằng lòng bàn tay, có khoá — mang đi công tác, du lịch không lạc bông tai.",
+      "priceHint": "~58k",
+      "url": "https://s.shopee.vn/9zyxaRyDeM?share_channel_code=8"
     },
     {
-      "id": "ao-cardigan",
-      "name": "Áo cardigan mỏng mặc phòng máy lạnh",
-      "emoji": "🧥",
+      "id": "lac-tay-bac-hanada-charm",
+      "name": "Lắc tay bạc Hanada phối đá charm",
+      "short": "lắc tay bạc phối đá",
+      "spoken": "bạc 925, có charm, nhiều màu đá để chọn",
+      "emoji": "📿",
       "category": "lam-dep",
       "shelf": "beauty",
       "slot": 6,
-      "note": "Văn phòng mình lạnh như tủ đông, khoác cái này vô là ấm mà mặc đi làm vẫn xinh.",
       "tags": [
+        "lam-dep",
         "thoi-trang",
-        "may-lanh",
-        "van-phong",
-        "lam-dep"
+        "trang-suc",
+        "qua-tang",
+        "sinh-nhat"
       ],
-      "pitch": "phòng lạnh 18 độ khoác vô là ấm, mặc đi làm vẫn xinh",
-      "priceHint": "~220k",
-      "url": "https://shopee.vn/search?keyword=%C3%81o%20cardigan%20m%E1%BB%8Fng%20m%E1%BA%B7c%20ph%C3%B2ng%20m%C3%A1y%20l%E1%BA%A1nh"
+      "pitch": "lắc tay bạc phối hạt đá và charm, đeo hằng ngày hay làm quà đều hợp",
+      "facts": "tên ghi bạc 925, phối hạt đá và charm; nhiều màu đá: thạch anh dâu hồng, citrine vàng, aquamarine, moonstone, xà cừ; tặng kèm hộp thường",
+      "avoid": "không nói đem lại tài lộc, may mắn hay phong thuỷ thật; chưa rõ đá tự nhiên hay đã xử lý, chưa rõ kích thước vòng",
+      "hooks": [
+        "sắp sinh nhật đồng nghiệp mà chưa nghĩ ra quà",
+        "đeo tay trống trơn đi tiệc",
+        "muốn tự thưởng sau tháng chạy KPI"
+      ],
+      "note": "Bạc phối đá màu và charm, nhiều tông đá — quà sinh nhật dễ chọn.",
+      "priceHint": "~406k",
+      "url": "https://s.shopee.vn/2BG6G5J7Wc?share_channel_code=8"
     },
     {
-      "id": "may-massage-co-vai-gay",
-      "name": "Máy massage cổ vai gáy",
-      "emoji": "💆",
+      "id": "lac-tay-bac-hanada-co-bon-la",
+      "name": "Lắc tay bạc Hanada cỏ bốn lá",
+      "short": "lắc tay cỏ bốn lá",
+      "spoken": "bạc 925, có màu hồng, xanh trời",
+      "emoji": "🍀",
       "category": "lam-dep",
       "shelf": "beauty",
       "slot": 7,
-      "note": "Ngồi máy tính tới chiều là cổ mình cứng ngắc, đeo 15 phút là êm, xài gần một năm chưa hư.",
       "tags": [
-        "massage",
-        "thu-gian",
-        "lung",
-        "suc-khoe",
-        "qua-tang",
         "lam-dep",
-        "van-phong"
+        "thoi-trang",
+        "trang-suc",
+        "qua-tang",
+        "sinh-nhat",
+        "tiec"
       ],
-      "pitch": "đeo lên cổ 15 phút là vai hết cứng, đỡ hơn đi spa",
-      "priceHint": "~450k",
-      "url": "https://shopee.vn/search?keyword=M%C3%A1y%20massage%20c%E1%BB%95%20vai%20g%C3%A1y"
+      "pitch": "lắc tay bạc hoạ tiết cỏ bốn lá, hoa đá hoặc nơ, kiểu thanh lịch",
+      "facts": "tên ghi bạc 925; hoạ tiết cỏ bốn lá, hoa đá, nơ; dây cách điệu hoặc dây xích; màu trắng, hồng, xanh trời, xanh lá",
+      "avoid": "không hứa mang lại may mắn; chưa rõ độ dài vòng, trọng lượng bạc, loại đá",
+      "hooks": [
+        "cần một món quà nhỏ mà nhìn sang",
+        "mai đi thuyết trình muốn đeo gì đó cho tự tin",
+        "kỷ niệm một năm đi làm muốn tự thưởng"
+      ],
+      "note": "Hoạ tiết cỏ bốn lá, hoa đá, nơ — nhỏ xinh, đeo đi làm vẫn thanh lịch.",
+      "priceHint": "~448k",
+      "url": "https://s.shopee.vn/4fxREj7yjO?share_channel_code=8"
+    },
+    {
+      "id": "phap-phuc-truc-tam",
+      "name": "Pháp phục Trúc Tâm dáng bà ba",
+      "short": "bộ pháp phục",
+      "emoji": "👘",
+      "category": "lam-dep",
+      "shelf": "beauty",
+      "slot": 8,
+      "tags": [
+        "thoi-trang",
+        "di-chua",
+        "ram",
+        "le"
+      ],
+      "pitch": "bộ pháp phục cách tân dáng bà ba bằng gấm, dáng suông rộng, mặc đi lễ chùa, đi chơi",
+      "facts": "chất gấm, dáng suông rộng, bán cả bộ; size S tới 2XL; màu hồng, xanh dương, be, xanh bơ, đỏ đô, vàng, cam, trắng; may ở Việt Nam",
+      "avoid": "giữ lời lẽ tôn trọng, không đùa cợt tôn giáo; màu có thể chênh theo ảnh",
+      "hooks": [
+        "mai là rằm, rủ nhau đi chùa sau giờ làm",
+        "mẹ dặn mùng một đi lễ phải mặc cho đàng hoàng",
+        "cuối tuần đưa ông bà đi lễ"
+      ],
+      "note": "Dáng bà ba cách tân bằng gấm, suông rộng — đi lễ chùa nhẹ nhàng, trang nhã.",
+      "priceHint": "~297k",
+      "url": "https://s.shopee.vn/1W0PSzGMdq?share_channel_code=8"
+    },
+    {
+      "id": "dam-ren-adora-zenmia",
+      "name": "Đầm ren Adora Zenmia",
+      "short": "đầm ren màu kem",
+      "emoji": "👗",
+      "category": "lam-dep",
+      "shelf": "beauty",
+      "slot": 9,
+      "tags": [
+        "thoi-trang",
+        "tiec",
+        "chup-anh",
+        "cuoi",
+        "hen-ho"
+      ],
+      "pitch": "đầm ren màu kem dáng xoè dài, cổ tròn, tay ngắn, chiết eo nhẹ",
+      "facts": "ren hoa nổi hoạ tiết lá, có lớp lót, dáng chữ A xoè dài, cổ tròn, tay ngắn; màu kem/trắng ngà; size S/M/L",
+      "avoid": "chưa rõ chiều dài theo size; không bình luận về cơ thể ai",
+      "hooks": [
+        "cuối tuần đi đám cưới bạn thân",
+        "công ty sắp chụp ảnh tập thể",
+        "có hẹn mà tủ đồ toàn áo công sở"
+      ],
+      "note": "Ren hoa màu kem, dáng xoè dài, có lót — đi tiệc, chụp ảnh đều hợp.",
+      "priceHint": "~369k",
+      "url": "https://s.shopee.vn/1gJpfKGZVK?share_channel_code=8"
+    },
+    {
+      "id": "vay-du-tiec-lech-vai",
+      "name": "Váy dự tiệc dài lệch vai",
+      "short": "váy dự tiệc lệch vai",
+      "spoken": "dáng dài ôm nhẹ, xoè nhẹ ở tà",
+      "emoji": "💃",
+      "category": "lam-dep",
+      "shelf": "beauty",
+      "slot": 10,
+      "tags": [
+        "thoi-trang",
+        "tiec",
+        "cuoi",
+        "chup-anh"
+      ],
+      "pitch": "váy dự tiệc dáng dài lệch vai, xếp ly eo, có hoa vải bên hông và dây cột điều chỉnh",
+      "facts": "dáng dài ôm nhẹ, xoè nhẹ ở tà, cổ lệch vai, xếp ly eo, hoa vải bên hông, dây cột phía sau; dài khoảng 140cm; màu nude, trắng, xanh bơ, đen, đỏ đô; size S tới XL",
+      "avoid": "không gọi là lụa tơ tằm; chưa rõ số đo theo size; không bình luận về cơ thể ai",
+      "hooks": [
+        "tiệc cuối năm công ty có dress code",
+        "đi ăn cưới mà không biết mặc gì",
+        "chụp ảnh kỷ niệm thành lập công ty"
+      ],
+      "note": "Lệch vai, xếp ly eo, hoa vải bên hông — váy dài đi tiệc, đi cưới.",
+      "priceHint": "",
+      "url": "https://s.shopee.vn/1W0PTOYj58?share_channel_code=8"
+    },
+    {
+      "id": "bo-ngu-zenme",
+      "name": "Bộ ngủ lụa latin Zenme",
+      "short": "bộ đồ ngủ",
+      "emoji": "👚",
+      "category": "lam-dep",
+      "shelf": "beauty",
+      "slot": 11,
+      "tags": [
+        "thoi-trang",
+        "qua-tang",
+        "ngu",
+        "cuoi-tuan",
+        "sinh-nhat"
+      ],
+      "pitch": "bộ pijama nữ form rộng, áo tay ngắn quần dài, phối ren, nhiều hoạ tiết dễ thương",
+      "facts": "form rộng, áo tay ngắn, quần dài, viền ren; size M (45–55kg), L (56–65kg); hoạ tiết nơ, gấu, mèo, dâu, lá bài…",
+      "avoid": "'lụa latin' là tên chất liệu shop đặt, không phải lụa tơ tằm; không bình luận về cơ thể ai",
+      "hooks": [
+        "cuối tuần chỉ muốn ở nhà mặc đồ ngủ xinh",
+        "chị em rủ mua đồ ngủ đôi đi team building",
+        "quà sinh nhật cho bạn cùng phòng"
+      ],
+      "note": "Pijama form rộng phối ren, nhiều hoạ tiết nơ, gấu, mèo, dâu.",
+      "priceHint": "~239k",
+      "url": "https://s.shopee.vn/2BG6GbAFYH?share_channel_code=8"
     },
     {
       "id": "may-hut-bui-giuong-nem",
-      "name": "Máy hút bụi giường nệm",
+      "name": "Máy hút bụi giường nệm Simplus",
+      "short": "máy hút bụi giường nệm",
+      "spoken": "có chổi lăn đập rung với đèn UV",
       "emoji": "🧹",
       "category": "cong-nghe",
       "shelf": "tech",
@@ -179,191 +361,383 @@
         "cong-nghe",
         "gia-dung",
         "ve-sinh",
-        "suc-khoe",
+        "don-dep",
         "ngu-trua",
-        "van-phong"
+        "nha-cua",
+        "suc-khoe"
       ],
-      "pitch": "máy hút bụi giường nệm, hút bụi mịn và mạt nhà trên nệm, gối, sofa",
-      "priceHint": "",
-      "note": "Mình mua về hút nệm với sofa ở nhà, đang xài thấy sạch và tiện, không còn hắt xì buổi sáng.",
+      "pitch": "máy hút bụi cho nệm, gối, sofa, thú bông, có chổi lăn đập rung, đèn UV và sấy nóng",
+      "facts": "chổi lăn đập rung, đèn UV, sấy nóng 65°C; hai cốc chứa bụi, lọc HEPA; họng hút 20cm; nặng 1,5kg, dây điện 4m; bảo hành 12 tháng",
+      "avoid": "không hứa diệt 99,99% mạt bụi hay virus (quảng cáo của shop, chưa kiểm chứng); không nói chữa dị ứng",
+      "hooks": [
+        "chăn gối ngủ trưa cả tháng chưa giặt",
+        "nằm sofa góc chill xong ngứa ngáy khắp người",
+        "sáng nào cũng hắt xì vì bụi"
+      ],
+      "note": "Chổi đập rung + đèn UV + sấy nóng, dùng cho nệm, gối, sofa, thú bông.",
+      "priceHint": "~1,05tr",
       "url": "https://s.shopee.vn/60Sooviq40?share_channel_code=8"
     },
     {
-      "id": "ban-phim-co",
-      "name": "Bàn phím cơ không dây",
-      "emoji": "⌨️",
+      "id": "may-chieu-mini",
+      "name": "Máy chiếu mini K670PRO",
+      "short": "máy chiếu mini",
+      "emoji": "📽️",
       "category": "cong-nghe",
       "shelf": "tech",
       "slot": 1,
-      "note": "Mình gõ con này hơn một năm, switch êm không làm phiền đồng nghiệp, sạc một lần xài cả tháng.",
       "tags": [
-        "ban-phim",
-        "dev",
-        "van-phong",
-        "gaming",
-        "cong-nghe"
-      ],
-      "pitch": "gõ code nghe lách cách sướng tai, sạc một lần xài cả tháng",
-      "priceHint": "~900k",
-      "url": "https://shopee.vn/search?keyword=B%C3%A0n%20ph%C3%ADm%20c%C6%A1%20kh%C3%B4ng%20d%C3%A2y"
-    },
-    {
-      "id": "tai-nghe-chong-on",
-      "name": "Tai nghe chống ồn chụp tai",
-      "emoji": "🎧",
-      "category": "cong-nghe",
-      "shelf": "tech",
-      "slot": 2,
-      "note": "Mình xài ba tháng rồi, pin trâu, đeo cả ngày không đau tai, bật chống ồn là văn phòng im bặt.",
-      "tags": [
-        "tai-nghe",
-        "dev",
-        "tap-trung",
+        "cong-nghe",
+        "trinh-chieu",
+        "phong-hop",
         "giai-tri",
-        "cong-nghe",
-        "van-phong"
+        "bong-da",
+        "tiec"
       ],
-      "pitch": "đeo vô là cả văn phòng im bặt, tập trung code nguyên buổi",
-      "priceHint": "~1,2tr",
-      "url": "https://shopee.vn/search?keyword=Tai%20nghe%20ch%E1%BB%91ng%20%E1%BB%93n%20ch%E1%BB%A5p%20tai"
+      "pitch": "máy chiếu mini chạy Android, chiếu từ điện thoại hoặc laptop qua chia sẻ màn hình hay HDMI",
+      "facts": "Android 12, chiếu cỡ 30–200 inch, Wi‑Fi 2,4/5GHz, Bluetooth 5.2, loa 5W, chỉnh méo hình kỹ thuật số, cổng HDMI/USB; bảo hành phần cứng 12 tháng",
+      "avoid": "độ phân giải gốc 720p: KHÔNG nói 4K hay Full HD gốc; không nói số lumen; link có nhiều model, phải chọn đúng K670PRO",
+      "hooks": [
+        "TV phòng họp chập chờn đúng lúc demo cho khách",
+        "tối nay có trận bóng muốn chiếu lên tường xem cho đã",
+        "team building cần chiếu phim ngoài trời"
+      ],
+      "note": "Android sẵn, chiếu từ điện thoại lên tường tới 200 inch — xem phim, xem bóng đá.",
+      "priceHint": "~1,7tr",
+      "url": "https://s.shopee.vn/7AemDNje8A?share_channel_code=8"
     },
     {
-      "id": "chuot-khong-day",
-      "name": "Chuột không dây công thái học",
-      "emoji": "🖱️",
-      "category": "cong-nghe",
-      "shelf": "tech",
-      "slot": 3,
-      "note": "Đổi qua con này là mình hết đau cổ tay, cầm êm, một cục pin xài cả tháng.",
-      "tags": [
-        "chuot",
-        "dev",
-        "van-phong",
-        "suc-khoe",
-        "cong-nghe",
-        "design"
-      ],
-      "pitch": "cầm êm tay, kéo chuột cả ngày không mỏi cổ tay",
-      "priceHint": "~350k",
-      "url": "https://shopee.vn/search?keyword=Chu%E1%BB%99t%20kh%C3%B4ng%20d%C3%A2y%20c%C3%B4ng%20th%C3%A1i%20h%E1%BB%8Dc"
-    },
-    {
-      "id": "sac-du-phong",
-      "name": "Sạc dự phòng 20.000mAh sạc nhanh",
-      "emoji": "🔋",
-      "category": "cong-nghe",
-      "shelf": "tech",
-      "slot": 4,
-      "note": "Đi làm đi chơi gì mình cũng thủ theo, sạc điện thoại được bốn lần, 30 phút lên hơn nửa pin.",
-      "tags": [
-        "sac",
-        "dien-thoai",
-        "cong-nghe",
-        "du-lich",
-        "van-phong",
-        "nang-luong"
-      ],
-      "pitch": "sạc điện thoại được bốn lần, khỏi đi mượn sạc nữa",
-      "priceHint": "~400k",
-      "url": "https://shopee.vn/search?keyword=S%E1%BA%A1c%20d%E1%BB%B1%20ph%C3%B2ng%2020.000mAh%20s%E1%BA%A1c%20nhanh"
-    },
-    {
-      "id": "man-hinh-27-inch",
-      "name": "Màn hình 27 inch 2K chuẩn màu",
+      "id": "man-hinh-aoc",
+      "name": "Màn hình AOC 27 inch 2K 210Hz",
+      "short": "màn hình 27 inch 2K",
+      "spoken": "tần số quét 210Hz, tấm nền Fast IPS",
       "emoji": "🖥️",
       "category": "cong-nghe",
       "shelf": "tech",
-      "slot": 5,
-      "note": "Mình chia đôi màn vừa làm vừa đọc tài liệu, màu chuẩn, nhìn cả ngày không mỏi mắt.",
+      "slot": 2,
       "tags": [
+        "cong-nghe",
         "man-hinh",
+        "ban-lam-viec",
         "dev",
         "design",
-        "van-phong",
-        "cong-nghe",
-        "mat"
+        "gaming"
       ],
-      "pitch": "chia đôi màn hình vừa code vừa đọc tài liệu, màu chuẩn cho dân thiết kế",
-      "priceHint": "~4,5tr",
-      "url": "https://shopee.vn/search?keyword=M%C3%A0n%20h%C3%ACnh%2027%20inch%202K%20chu%E1%BA%A9n%20m%C3%A0u"
+      "pitch": "màn hình 27 inch tấm nền Fast IPS độ phân giải 2K, tần số quét 210Hz",
+      "facts": "27 inch, 2560×1440, Fast IPS, 210Hz, phản hồi 1ms GtG; cổng DisplayPort 1.4 và HDMI 2.1; treo tường VESA 100; bảo hành chính hãng 36 tháng",
+      "avoid": "lúc kiểm tra đang hết hàng; bản 180Hz khác bản 210Hz; không phải màn cảm ứng",
+      "hooks": [
+        "màn hình cũ nhỏ xíu mở hai cửa sổ là chật",
+        "designer than màn hình không đủ chi tiết",
+        "chiều nay muốn đua game với team"
+      ],
+      "note": "27 inch 2K, 210Hz, tấm nền Fast IPS — rộng chỗ để code, thiết kế, chơi game.",
+      "priceHint": "~5,69tr",
+      "url": "https://s.shopee.vn/6AmF1v0R68?share_channel_code=8"
     },
     {
-      "id": "dong-ho-thong-minh",
-      "name": "Đồng hồ thông minh đo sức khoẻ",
-      "emoji": "⌚",
+      "id": "ssd-di-dong-ssk",
+      "name": "Ổ SSD di động SSK hai đầu",
+      "short": "ổ SSD di động",
+      "emoji": "💽",
+      "category": "cong-nghe",
+      "shelf": "tech",
+      "slot": 3,
+      "tags": [
+        "cong-nghe",
+        "sao-luu",
+        "du-lieu",
+        "dev",
+        "backup"
+      ],
+      "pitch": "ổ SSD di động có cả đầu USB-A lẫn USB-C, chép dữ liệu qua lại máy tính, điện thoại",
+      "facts": "hai đầu USB-A và USB-C, chuẩn USB 3.2 Gen 2, vỏ hợp kim; dùng với Windows, macOS, Linux, Android, iPad; bảo hành 3 năm; bản 1TB còn hàng lúc kiểm tra",
+      "avoid": "không nói tốc độ cụ thể (các chỗ ghi lệch nhau); phải có cổng tương thích mới đạt tốc độ cao",
+      "hooks": [
+        "vừa sập server, ai cũng sợ mất dữ liệu",
+        "laptop báo đầy ổ cứng giữa lúc build",
+        "phải chép file video nặng cho khách"
+      ],
+      "note": "Hai đầu USB-A và USB-C, vỏ hợp kim, bảo hành 3 năm — sao lưu mang theo người.",
+      "priceHint": "~4,59tr",
+      "url": "https://s.shopee.vn/3LS3eY5udh?share_channel_code=8"
+    },
+    {
+      "id": "chuot-attack-shark-x11",
+      "name": "Chuột gaming Attack Shark X11",
+      "short": "chuột gaming không dây",
+      "emoji": "🖱️",
+      "category": "cong-nghe",
+      "shelf": "tech",
+      "slot": 4,
+      "tags": [
+        "cong-nghe",
+        "chuot",
+        "gaming",
+        "game",
+        "ban-lam-viec",
+        "dev"
+      ],
+      "pitch": "chuột không dây siêu nhẹ, ba kiểu kết nối, có dock sạc phát sáng",
+      "facts": "mẫu X11 khoảng 63g; Bluetooth 5.2, 2.4GHz và dây Type-C; cảm biến PAW3311; dock sạc có đèn; pin tới 65 giờ theo shop; bảo hành 12 tháng",
+      "avoid": "thông số chỉ đúng mẫu X11, link còn mẫu R1, X11SE, X11PRO; không hứa thắng game",
+      "hooks": [
+        "chuột cũ double-click loạn xạ",
+        "tối nay leo rank với team",
+        "dây chuột rối tung trên bàn"
+      ],
+      "note": "Mẫu X11 nhẹ khoảng 63g, 3 kiểu kết nối, dock sạc có đèn.",
+      "priceHint": "~488k",
+      "url": "https://s.shopee.vn/4B1Ae6BTln?share_channel_code=8"
+    },
+    {
+      "id": "lot-chuot-hinh-meo",
+      "name": "Lót chuột hình mèo",
+      "short": "lót chuột hình mèo",
+      "spoken": "mặt vải, đế cao su chống trượt",
+      "emoji": "🐱",
+      "category": "cong-nghe",
+      "shelf": "tech",
+      "slot": 5,
+      "tags": [
+        "cong-nghe",
+        "chuot",
+        "ban-lam-viec",
+        "decor",
+        "design",
+        "qua-tang"
+      ],
+      "pitch": "lót chuột vải in hình mèo, đế cao su chống trượt, làm góc bàn dễ thương hơn",
+      "facts": "24,5×32cm, dày 3mm, mặt vải, đế cao su chống trượt, viền dày; nhiều mẫu mèo",
+      "avoid": "không phải lót chuột gaming chuyên dụng",
+      "hooks": [
+        "chuột trượt lung tung trên mặt bàn kính",
+        "muốn góc làm việc dễ thương hơn",
+        "quà nhỏ cho đồng nghiệp mê mèo"
+      ],
+      "note": "In hình mèo, đế cao su chống trượt — góc làm việc dễ thương hẳn.",
+      "priceHint": "~35k",
+      "url": "https://s.shopee.vn/8VA9oAEYcO?share_channel_code=8"
+    },
+    {
+      "id": "gia-treo-pc-unlimi",
+      "name": "Giá treo PC gầm bàn UNLIMI",
+      "short": "giá treo thùng PC",
+      "emoji": "🔩",
       "category": "cong-nghe",
       "shelf": "tech",
       "slot": 6,
-      "note": "Mình đeo đi tập với đi làm, pin mười ngày mới sạc, đang họp có tin nhắn thì liếc tay là biết.",
       "tags": [
         "cong-nghe",
-        "suc-khoe",
-        "the-thao",
-        "golf",
-        "sep",
-        "qua-tang",
-        "dien-thoai"
+        "ban-lam-viec",
+        "gon-gang",
+        "dev",
+        "gaming"
       ],
-      "pitch": "đếm bước, đo nhịp tim, pin mười ngày, nhận tin nhắn khỏi móc điện thoại",
-      "priceHint": "~1,5tr",
-      "url": "https://shopee.vn/search?keyword=%C4%90%E1%BB%93ng%20h%E1%BB%93%20th%C3%B4ng%20minh%20%C4%91o%20s%E1%BB%A9c%20kho%E1%BA%BB"
+      "pitch": "khung kim loại bắt vít dưới gầm bàn để treo thùng máy tính, giải phóng chỗ để chân",
+      "facts": "khung kim loại màu đen, bắt vít dưới mặt bàn, tải khoảng 10kg, tự lắp với dụng cụ cơ bản; bảo hành 1 tháng",
+      "avoid": "phải đo kích thước thùng máy và độ dày mặt bàn trước khi mua",
+      "hooks": [
+        "thùng máy tính chiếm hết chỗ để chân",
+        "lau nhà mà phải bê cái case lên",
+        "đang thi góc làm việc gọn nhất"
+      ],
+      "note": "Treo thùng PC lên gầm bàn, dưới chân thoáng hẳn, lau nhà dễ.",
+      "priceHint": "",
+      "url": "https://s.shopee.vn/60Sopjt1iZ?share_channel_code=8"
     },
     {
-      "id": "gia-do-laptop",
-      "name": "Giá đỡ laptop nhôm gấp gọn",
-      "emoji": "💻",
+      "id": "may-lam-sua-hat-lazychef",
+      "name": "Máy làm sữa hạt Lazychef",
+      "short": "máy làm sữa hạt",
+      "spoken": "nấu được cả cháo với sinh tố",
+      "emoji": "🥛",
       "category": "cong-nghe",
       "shelf": "tech",
       "slot": 7,
-      "note": "Kê laptop lên ngang mắt là hết cúi gằm, mình gấp lại bỏ balo mang đi làm mỗi ngày.",
       "tags": [
-        "dev",
-        "lung",
-        "van-phong",
-        "laptop",
+        "nau-an",
+        "bep",
+        "do-uong",
+        "an-sang",
         "suc-khoe",
-        "cong-nghe"
+        "gia-dung"
       ],
-      "pitch": "kê laptop cao ngang mắt, hết cúi gằm đau cổ",
-      "priceHint": "~220k",
-      "url": "https://shopee.vn/search?keyword=Gi%C3%A1%20%C4%91%E1%BB%A1%20laptop%20nh%C3%B4m%20g%E1%BA%A5p%20g%E1%BB%8Dn"
+      "pitch": "máy xay nấu đa năng làm sữa hạt, cháo, sinh tố, sữa chua, tự rửa và hẹn giờ",
+      "facts": "dung tích 1,2L; nấu 800W, xay 150W; làm sữa hạt, cháo, đồ ăn dặm, sinh tố, sữa chua; có tự làm sạch, sấy khô, giữ ấm, hẹn giờ tới 12 tiếng; màn cảm ứng; bảo hành 1 năm",
+      "avoid": "hỗ trợ kỹ thuật 10 năm KHÔNG phải bảo hành 10 năm; không hứa tác dụng sức khoẻ",
+      "hooks": [
+        "sáng nào cũng uống cà phê thay bữa",
+        "đồng nghiệp mới có em bé cần làm đồ ăn dặm",
+        "HR bắt sống khoẻ mà ai cũng nghiện trà sữa"
+      ],
+      "note": "Hẹn giờ tối, sáng dậy có sữa hạt nóng; làm được cả cháo, sinh tố, sữa chua.",
+      "priceHint": "~1,77tr",
+      "url": "https://s.shopee.vn/W7sHDGDZl?share_channel_code=8"
     },
     {
-      "id": "quat-tan-nhiet-dien-thoai",
-      "name": "Quạt tản nhiệt điện thoại sò lạnh",
-      "emoji": "❄️",
+      "id": "am-dun-nuoc-bluestone",
+      "name": "Ấm đun nước hai lớp BlueStone",
+      "short": "ấm siêu tốc",
+      "emoji": "🫖",
       "category": "cong-nghe",
       "shelf": "tech",
       "slot": 8,
-      "note": "Mình gắn sau điện thoại chơi game với livestream cả tiếng máy vẫn mát, không giật.",
       "tags": [
-        "gaming",
-        "dien-thoai",
-        "game",
-        "cong-nghe"
+        "do-uong",
+        "tra",
+        "ca-phe",
+        "bep",
+        "pantry",
+        "gia-dung"
       ],
-      "pitch": "chơi game cả tiếng máy vẫn mát, không bị giật lag",
-      "priceHint": "~180k",
-      "url": "https://shopee.vn/search?keyword=Qu%E1%BA%A1t%20t%E1%BA%A3n%20nhi%E1%BB%87t%20%C4%91i%E1%BB%87n%20tho%E1%BA%A1i%20s%C3%B2%20l%E1%BA%A1nh"
+      "pitch": "ấm siêu tốc hai lớp công suất 1800W, có nút bật nắp, giữ ấm",
+      "facts": "1800W, thiết kế hai lớp, nút bật nắp, có vạch mức nước, giữ ấm; bảo hành 24 tháng",
+      "avoid": "dung tích ghi lệch (1,5L hay 1,7L) nên không nói số; không nói chất liệu lòng ấm",
+      "hooks": [
+        "ấm siêu tốc ở pantry lại hỏng, cả phòng chờ nước sôi",
+        "sếp có khách cần pha trà gấp",
+        "trưa nào cũng úp mì"
+      ],
+      "note": "Ấm siêu tốc hai lớp 1800W, nút bật nắp, bảo hành 24 tháng.",
+      "priceHint": "~565k",
+      "url": "https://s.shopee.vn/2qVn3ZIENw?share_channel_code=8"
     },
     {
-      "id": "micro-karaoke",
-      "name": "Micro karaoke bluetooth kèm loa",
-      "emoji": "🎤",
+      "id": "noi-dien-bluestone",
+      "name": "Nồi điện đa năng BlueStone",
+      "short": "nồi điện hai tầng",
+      "spoken": "nhỏ gọn, vừa nấu vừa hấp cùng lúc",
+      "emoji": "🍲",
       "category": "cong-nghe",
       "shelf": "tech",
       "slot": 9,
-      "note": "Tiệc công ty hay sinh nhật mình mang ra là vui hẳn, kết nối điện thoại hát liền, pin được cả buổi.",
       "tags": [
-        "karaoke",
-        "giai-tri",
-        "tiec",
-        "qua-tang",
-        "cong-nghe"
+        "nau-an",
+        "an-trua",
+        "hop-com",
+        "do-an",
+        "bep"
       ],
-      "pitch": "kết nối điện thoại là hát liền, tiệc văn phòng vui hẳn",
-      "priceHint": "~350k",
-      "url": "https://shopee.vn/search?keyword=Micro%20karaoke%20bluetooth%20k%C3%A8m%20loa"
+      "pitch": "nồi điện nhỏ gọn hai tầng vừa nấu vừa hấp, lòng inox, mang lên văn phòng nấu trưa",
+      "facts": "hai tầng nấu và hấp cùng lúc; lòng nồi inox 304; hai mức công suất 600–720W; tay cầm cách nhiệt; tự ngắt khi quá nhiệt hoặc cạn nước; bảo hành 24 tháng",
+      "avoid": "chưa rõ dung tích lòng nồi",
+      "hooks": [
+        "ăn cơm hộp nguội hoài ngán tận cổ",
+        "muốn tự nấu trưa cho tiết kiệm",
+        "đồ ăn đặt trưa nào cũng giao trễ"
+      ],
+      "note": "Hai tầng vừa nấu vừa hấp, lòng inox — nấu bữa trưa ngay tại văn phòng.",
+      "priceHint": "~562k",
+      "url": "https://s.shopee.vn/9pfXORZmnJ?share_channel_code=8"
+    },
+    {
+      "id": "chan-goi-van-phong-cecila",
+      "name": "Chăn gối văn phòng hình thú CECILA",
+      "short": "gối thú bông kiêm chăn",
+      "spoken": "mở ra đắp ngủ trưa luôn, vải nỉ bông mềm",
+      "emoji": "🧸",
+      "category": "cong-nghe",
+      "shelf": "tech",
+      "slot": 10,
+      "tags": [
+        "ngu-trua",
+        "chan-goi",
+        "van-phong",
+        "may-lanh",
+        "thu-gian"
+      ],
+      "pitch": "gối thú bông mở ra thành chăn để ngủ trưa văn phòng, đi xe, đi du lịch",
+      "facts": "gối hình khủng long hoặc husky, bên trong gấp sẵn chăn 1m×1m7, vải nỉ bông mềm, có chỗ luồn tay; giặt tay",
+      "avoid": "không nói lông vũ hay lông cừu; không có bộ sưởi điện",
+      "hooks": [
+        "ngủ trưa gục bàn dậy là ê cổ",
+        "máy lạnh văn phòng lạnh như tủ đông",
+        "gối ngủ trưa bị ai lấy mất"
+      ],
+      "note": "Ban ngày là gối thú bông, trưa mở ra thành chăn 1m×1m7 — ngủ trưa văn phòng tiện hẳn.",
+      "priceHint": "~200k",
+      "url": "https://s.shopee.vn/70LM1Ccib4?share_channel_code=8"
+    },
+    {
+      "id": "tui-giat-luoi",
+      "name": "Túi giặt lưới mịn NC70",
+      "short": "túi giặt lưới",
+      "emoji": "🧺",
+      "category": "cong-nghe",
+      "shelf": "tech",
+      "slot": 11,
+      "tags": [
+        "gia-dung",
+        "giat-giu",
+        "don-dep",
+        "ve-sinh",
+        "nha-cua"
+      ],
+      "pitch": "túi lưới mịn có khoá kéo, bỏ quần áo vào trước khi giặt máy cho đỡ rối, đỡ xù",
+      "facts": "vải polyester lưới mịn, khoá kéo; nhiều cỡ 30×40, 40×50, 50×60, 60×60cm; dùng cho sơ mi, áo len, jean, khăn, đồ lót, đồ trẻ em",
+      "avoid": "chỉ nên cho đồ khoảng 2/3 túi; không bảo hành",
+      "hooks": [
+        "áo đồng phục giặt máy bị xù lông",
+        "giặt đồ chung bị lạc mất chiếc tất",
+        "máy giặt làm rối tung quần áo"
+      ],
+      "note": "Lưới mịn có khoá kéo, nhiều cỡ — áo sơ mi, áo len giặt máy đỡ rối, đỡ xù.",
+      "priceHint": "",
+      "url": "https://s.shopee.vn/3qOKFZOGtR?share_channel_code=8"
+    },
+    {
+      "id": "rem-voan-dui",
+      "name": "Rèm voan đũi xám xi măng",
+      "short": "rèm voan đũi",
+      "emoji": "🪟",
+      "category": "cong-nghe",
+      "shelf": "tech",
+      "slot": 12,
+      "tags": [
+        "nha-cua",
+        "rem",
+        "nang",
+        "decor",
+        "don-dep"
+      ],
+      "pitch": "rèm voan đũi màu xám xi măng, mềm, ít nhăn, treo cửa sổ phòng khách, phòng ngủ",
+      "facts": "voan đũi xám xi măng; nhiều kích thước từ 1,3×1,8m tới 3,5×2,7m; kiểu lỗ khoen, dán tường, may móc, rido; mỗi tấm kèm một dây vén",
+      "avoid": "không chống nắng hoàn toàn; không kèm thanh treo",
+      "hooks": [
+        "nắng chiều rọi thẳng màn hình chói mắt",
+        "phòng trọ mới dọn tới trống trơn",
+        "góc chill cần sửa sang cho có không khí"
+      ],
+      "note": "Voan đũi xám xi măng, mềm, ít nhăn — nhiều kích thước, kèm dây vén.",
+      "priceHint": "",
+      "url": "https://s.shopee.vn/3VlTr5mddk?share_channel_code=8"
+    },
+    {
+      "id": "thanh-treo-rem",
+      "name": "Thanh treo rèm không cần khoan",
+      "short": "thanh treo rèm không khoan",
+      "emoji": "🪝",
+      "category": "cong-nghe",
+      "shelf": "tech",
+      "slot": 13,
+      "tags": [
+        "nha-cua",
+        "rem",
+        "gia-dung",
+        "khong-khoan"
+      ],
+      "pitch": "thanh treo rèm tăng chỉnh chiều dài, giữ bằng lò xo và đầu cao su, không cần khoan tường",
+      "facts": "thép sơn tĩnh điện màu trắng, đầu cao su, chỉnh dài nhiều cỡ từ 30–50 tới 70–120cm; treo rèm, khăn nhẹ",
+      "avoid": "không hứa treo được đồ nặng; tải thực tế tuỳ độ dài và bề mặt",
+      "hooks": [
+        "chủ nhà không cho khoan tường",
+        "muốn treo rèm mà không có máy khoan",
+        "góc tủ cần chỗ vắt khăn"
+      ],
+      "note": "Vặn dài ra là chống chặt hai bên tường, không cần khoan — treo rèm, khăn nhẹ.",
+      "priceHint": "~28k",
+      "url": "https://s.shopee.vn/9zyxb4aHhX?share_channel_code=8"
     }
   ]
 }

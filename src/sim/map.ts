@@ -70,9 +70,9 @@ export const SPOTS: Record<string, Pt[]> = {
 };
 
 export const FURNITURE: Furniture[] = [
-  // Phòng trưng bày (v2): 2 kệ sản phẩm sát tường trên, bục trưng bày nhỏ ở giữa, cây cảnh góc phải
-  { type: 'shelf_beauty', x: 1, y: 1, w: 4, h: 1, blocked: true, label: 'LÀM ĐẸP' },
-  { type: 'shelf_tech', x: 5, y: 1, w: 4, h: 1, blocked: true, label: 'CÔNG NGHỆ' },
+  // Phòng trưng bày (v2; v4: mỗi kệ 2 tầng × 7 món): 2 kệ sát tường trên, bục trưng bày nhỏ ở giữa, cây cảnh góc phải
+  { type: 'shelf_beauty', x: 1, y: 1, w: 4, h: 1, blocked: true, label: 'LÀM ĐẸP & THỜI TRANG' },
+  { type: 'shelf_tech', x: 5, y: 1, w: 4, h: 1, blocked: true, label: 'CÔNG NGHỆ & NHÀ CỬA' },
   { type: 'display_table', x: 4, y: 4, w: 2, h: 1, blocked: true },
   { type: 'plant', x: 8, y: 5, w: 1, h: 1, blocked: true },
   // Phòng server

@@ -1,0 +1,16 @@
+{
+  "name": "Văn Phòng Ảo — VibeCorp",
+  "short_name": "Văn Phòng Ảo",
+  "description": "Sitcom văn phòng AI phát trực tiếp 24/7: 10 nhân viên AI làm việc, tám chuyện, trốn việc.",
+  "lang": "vi",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f6f1ea",
+  "theme_color": "#f6f1ea",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

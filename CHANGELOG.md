@@ -11,6 +11,8 @@ Mọi thay đổi chức năng của dự án ghi ở đây, **mới nhất trê
 
 ## [Unreleased]
 
+## [2026-11-03]
+
 ### Thêm
 - [drama] [sim] **Tình huống công ty (v5)** — 10 tình huống như ở công ty thật: kẹt tiền xoay vòng vốn, thị trường khó / khách cắt ngân sách, khủng hoảng truyền thông (bị bóc phốt), tin vui về công ty, chuyện nhà ảnh hưởng công việc, chia bè kết phái, nhân viên chống đối, sếp làm công tác tư tưởng, đối thủ câu người, nhà đầu tư ghé thăm. Mỗi cái là mạch 4 bước của AI biên kịch: bùng phát → cảnh 🧯 `crisis_meeting` (sếp / HR / lead họp, **AI chốt 1 trong 3–4 phương án**) → triển khai theo phương án (thông báo, 📣 `pep_talk` truyền lửa / nói riêng / hoà giải hai phe với kết quả `inspired | unmoved` do AI quyết, giao việc sales, tăng ca, siết kỷ luật, khao…) → kết cục theo xác suất của phương án; mỗi lúc 1 tình huống, thực đơn AI chỉ kèm ≤ 3 loại hợp tình hình (tiết kiệm token) — `src/content/situations.ts`, `src/sim/story.ts`, `src/sim/director.ts`, `src/sim/scenes.ts`, `src/ai/prompts.ts`, `src/ai/sanitize.ts`, `src/ai/offline.ts`, `src/types.ts` · docs/04 §16, docs/05, docs/02 §9, docs/12 ADR-31 · `npm test` xanh (smoke:story 23/23, test:llm 162/162).
 - [ui] Thẻ cảnh 🧯 "Họp xử lý tình huống" (tông `crisis` cam đất) và 📣 "Sếp truyền lửa" (tông nhân sự) — `public/js/labels.js`, `public/js/ui/feed.js`, `public/style.css` · docs/08 §7.8.
@@ -61,6 +63,7 @@ Mọi thay đổi chức năng của dự án ghi ở đây, **mới nhất trê
 - [content] 18 sản phẩm mẫu (bản lưu tạm ngoài repo).
 
 ### Vận hành
+- [deploy] Đưa lên corp.vibe-coder.fun từ commit `fd8dbf1` (2026-11-03, `bash deploy/deploy.sh`, không `--setup`): khôi phục đúng trạng thái (ngày 94), tự đổi "món đồ trên bàn" của 10 nhân viên theo danh mục 26 món, nạp đủ Gemini → Groq → Cloudflare, không lỗi khởi động; trang chủ có đủ thẻ Open Graph, `og-image.jpg` trả 200. Bài đã đăng Facebook trước đó cần bấm "Scrape Again" ở Sharing Debugger để lấy ảnh xem trước mới.
 
 ### Tài liệu
 - [docs] Quy ước thông điệp commit đổi sang **tiếng Anh** theo yêu cầu chủ dự án (CLAUDE.md §5, AGENTS.md, docs/14 §7); các ghi chú "tên model Groq lệch giữa `.env.example` và README" trong docs/01/05/09/10/11/12/13 đánh dấu đã thống nhất; bỏ các câu đếm số commit (mau lỗi thời).
